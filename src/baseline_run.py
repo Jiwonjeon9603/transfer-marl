@@ -20,6 +20,7 @@ from components.transforms import OneHot
 
 import numpy as np
 
+import wandb
 
 def run(_run, _config, _log):
     # check args sanity
@@ -55,6 +56,11 @@ def run(_run, _config, _log):
 
     # sacred is on by default
     logger.setup_sacred(_run)
+
+    alg_name = "&".join(args.train_tasks) + "__TO__" + "&".join(args.test_tasks)
+    wandb.login(relogin=True, key='ad42a1cee565925e2b5065efe7e76c329b954a29')
+    wandb.init(project="Transfer_UpDeT", group=args.task, name=alg_name)
+
 
     # Run and train
     run_sequential(args=args, logger=logger)
@@ -232,6 +238,9 @@ def train_sequential(train_tasks, main_args, logger, learner, task2args, task2ru
             logger.log_stat("episode", episode, t_env)
             logger.print_recent_stats()
 
+            for test in main_args.test_tasks:
+                wandb.log({f"{test}_battle_won_mean": logger.stats[f"{test}/test_battle_won_mean"][-1][-1]}, step=t_env)
+            
 
 def run_sequential(args, logger):
     # Init runner so we can get env info

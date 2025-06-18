@@ -5,7 +5,7 @@ numpy
 probscale
 pygame
 pytest
-pyyaml==5.4.1
+pyyaml
 sacred
 scipy
 seaborn

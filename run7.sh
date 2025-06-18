@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=2 python src/main.py --baseline_run --config=updet-m --env-config=sc2_offline --task-config=toy7 --seed=0

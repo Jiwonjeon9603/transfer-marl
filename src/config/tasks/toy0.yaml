@@ -3,19 +3,23 @@
 # get env information
 env: "sc2"
 # get task information
-task: "marine-easy-expert"
+task: "Same"
 # define train tasks and test tasks
-train_tasks: ["3m"]
+train_tasks: ["5m"]
 train_tasks_data_quality: {
-    "3m": "medium",
+    "5m": "medium",
+    "5m": "expert",
+    "5m": "medium-replay",
 }
 
-test_tasks: ["3m", "4m", "5m"]
+test_tasks: ["3m", "5m", "8m"]
 test_tasks_data_quality: {
 }
 
 # define additional pretrain tasks
-pretrain_tasks: ["3m"]
+pretrain_tasks: ["5m"]
 pretrain_tasks_data_quality: {
-    "3m": "medium",
+    "5m": "medium",
+    "5m": "expert",
+    "5m": "medium-replay",
 }
