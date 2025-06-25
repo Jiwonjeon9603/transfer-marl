@@ -244,7 +244,7 @@ def train_sequential(train_tasks, main_args, logger, learner, task2args, task2ru
                 else:
                     log_battle_won_mean = logger.stats[f"{test}/test_battle_won_mean"][-1][-1]
                 
-                wandb.log({f"{test}_battle_won_mean": log_battle_won_mean}, step=t_env)
+                wandb.log({"battle_won_mean": log_battle_won_mean}, step=t_env)
             
 
 def run_sequential(args, logger):
