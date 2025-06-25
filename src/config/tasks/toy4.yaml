@@ -3,21 +3,22 @@
 # get env information
 env: "sc2"
 # get task information
-task: "Same"
+task: "Stalker-Zealot"
 # define train tasks and test tasks
-train_tasks: ["5m", "5m_vs_6m"]
+
+train_tasks: ["2s3z"]
 train_tasks_data_quality: {
-    "5m": "expert",
-    "5m_vs_6m": "expert",
+    "2s3z": "medium",
 }
 
-test_tasks: ["3m", "5m", "8m", "4m_vs_5m", "5m_vs_6m", "8m_vs_9m"]
+
+test_tasks: ["2s3z"]
 test_tasks_data_quality: {
 }
 
-# define additional pretrain tasks
-pretrain_tasks: ["5m", "5m_vs_6m"]
+
+pretrain_tasks: ["2s3z"]
 pretrain_tasks_data_quality: {
-    "5m": "expert",
-    "5m_vs_6m": "expert",
+    "2s3z": "medium",
 }
+

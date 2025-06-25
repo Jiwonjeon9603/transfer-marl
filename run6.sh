@@ -1,1 +1,2 @@
-CUDA_VISIBLE_DEVICES=4 taskset -c 0-15,32-47 python src/main.py --baseline_run --config=updet-m --env-config=sc2_offline --task-config=toy6 --seed=0
+CUDA_VISIBLE_DEVICES=6 python src/main.py --baseline_run --config=updet-m --env-config=sc2_offline --task-config=toy6 --seed=0 --t_max=50000 \
+&& CUDA_VISIBLE_DEVICES=6 python src/main.py --mto --config=odis --env-config=sc2_offline --task-config=toy6 --seed=0
