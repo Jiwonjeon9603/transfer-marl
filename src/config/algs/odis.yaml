@@ -34,7 +34,7 @@ c_step: 1
 beta: 0.001
 coef_conservative: 5.0
 coef_dist: 5.0
-pretrain_steps: 15000
+pretrain_steps: 1000 #15000
 pretrain: True
 
 head: 1

@@ -263,10 +263,10 @@ def train_sequential(train_tasks, main_args, logger, learner, task2args, task2ru
             logger.log_stat("episode", episode, t_env)
             logger.print_recent_stats()
             for test in main_args.test_tasks:
-                if f"pretrain/{test}/test_battle_won_mean" in logger.stats.keys():
-                    log_battle_won_mean = logger.stats[f"pretrain/{test}/test_battle_won_mean"][-1][-1]
-                else:
+                if f"{test}/test_battle_won_mean" in logger.stats.keys():
                     log_battle_won_mean = logger.stats[f"{test}/test_battle_won_mean"][-1][-1]
+                else:
+                    log_battle_won_mean = logger.stats[f"pretrain/{test}/test_battle_won_mean"][-1][-1]
                 
                 wandb.log({"battle_won_mean": log_battle_won_mean}, step=t_env)
            
