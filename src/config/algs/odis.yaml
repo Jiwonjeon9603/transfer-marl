@@ -43,3 +43,5 @@ depth: 1
 # params about observation decomposition
 id_length: 4
 max_agent: 15
+
+algo_name: "ODIS"

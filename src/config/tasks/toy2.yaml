@@ -3,22 +3,21 @@
 # get env information
 env: "sc2"
 # get task information
-task: "Different-Easy-to-Hard"
+task: "Marine"
 # define train tasks and test tasks
-train_tasks: ["3m", "8m"]
-train_tasks_data_quality: {
-    "3m": "medium",
-    "8m": "medium",
 
+train_tasks: ["10m"]
+train_tasks_data_quality: {
+    "10m": "medium",
 }
 
-test_tasks: ["3m", "5m", "8m"]
+
+test_tasks: ["10m"]
 test_tasks_data_quality: {
 }
 
-# define additional pretrain tasks
-pretrain_tasks: ["3m", "8m"]
+
+pretrain_tasks: ["10m"]
 pretrain_tasks_data_quality: {
-    "3m": "medium",
-    "8m": "medium",
+    "10m": "medium",
 }

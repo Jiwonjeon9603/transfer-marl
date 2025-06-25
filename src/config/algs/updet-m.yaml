@@ -47,3 +47,6 @@ type_conservative: "norm"
 
 head: 1
 depth: 1
+
+
+algo_name: "Updet-m"

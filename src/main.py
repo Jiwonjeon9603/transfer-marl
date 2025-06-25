@@ -39,7 +39,7 @@ def my_main(_run, _config, _log):
 
     ########## For debugging ###########
     # config["run_file"] = "baseline_run"
-    config["run_file"] = "mto"
+    # config["run_file"] = "mto"
     ####################################
 
     # run the framework
@@ -145,35 +145,35 @@ if __name__ == '__main__':
 
 
     ############ For debugging ##################
-    with open(
-        os.path.join(os.path.dirname(__file__), "config/envs", "sc2_offline.yaml"), "r"
-    ) as f:
-        try:
-            env_config = yaml.full_load(f)
-        except yaml.YAMLError as exc:
-            assert False, "default.yaml error: {}".format(exc)
+    # with open(
+    #     os.path.join(os.path.dirname(__file__), "config/envs", "sc2_offline.yaml"), "r"
+    # ) as f:
+    #     try:
+    #         env_config = yaml.full_load(f)
+    #     except yaml.YAMLError as exc:
+    #         assert False, "default.yaml error: {}".format(exc)
 
-    with open(
-        os.path.join(os.path.dirname(__file__), "config/algs", "odis.yaml"), "r"
-    ) as f:
-        try:
-            alg_config = yaml.full_load(f)
-        except yaml.YAMLError as exc:
-            assert False, "default.yaml error: {}".format(exc)
+    # with open(
+    #     os.path.join(os.path.dirname(__file__), "config/algs", "odis.yaml"), "r"
+    # ) as f:
+    #     try:
+    #         alg_config = yaml.full_load(f)
+    #     except yaml.YAMLError as exc:
+    #         assert False, "default.yaml error: {}".format(exc)
 
     
-    with open(
-        os.path.join(os.path.dirname(__file__), "config/tasks", "toy0.yaml"), "r"
-    ) as f:
-        try:
-            task_config = yaml.full_load(f)
-        except yaml.YAMLError as exc:
-            assert False, "default.yaml error: {}".format(exc)
+    # with open(
+    #     os.path.join(os.path.dirname(__file__), "config/tasks", "toy0.yaml"), "r"
+    # ) as f:
+    #     try:
+    #         task_config = yaml.full_load(f)
+    #     except yaml.YAMLError as exc:
+    #         assert False, "default.yaml error: {}".format(exc)
 
 
-    config_dict = recursive_dict_update(config_dict, alg_config)
-    config_dict = recursive_dict_update(config_dict, env_config)
-    config_dict = recursive_dict_update(config_dict, task_config)
+    # config_dict = recursive_dict_update(config_dict, alg_config)
+    # config_dict = recursive_dict_update(config_dict, env_config)
+    # config_dict = recursive_dict_update(config_dict, task_config)
 
     ############################################################
 
