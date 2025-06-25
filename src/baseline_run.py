@@ -59,7 +59,7 @@ def run(_run, _config, _log):
 
     alg_name = "&".join(args.train_tasks) + "__TO__" + "&".join(args.test_tasks)
     wandb.login(relogin=True, key='ad42a1cee565925e2b5065efe7e76c329b954a29')
-    wandb.init(project="Transfer_UpDeT", group=args.task, name=alg_name)
+    wandb.init(project="Transfer_UpDeT-Expert", group=args.task, name=alg_name)
 
 
     # Run and train

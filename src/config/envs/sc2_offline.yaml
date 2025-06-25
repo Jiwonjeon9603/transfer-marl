@@ -37,8 +37,9 @@ test_interval: 500
 log_interval: 500
 runner_log_interval: 500
 learner_log_interval: 500
-save_model_interval: 10000
-t_max: 60000 #35000
+
+save_model_interval: 50000
+t_max: 35000 #35000
 
 # offline dataset
 offline_data_folder: "dataset"

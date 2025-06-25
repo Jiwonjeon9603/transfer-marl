@@ -184,6 +184,6 @@ class EpisodeRunner:
         cur_returns.append(episode_return)
 
         if len(self.test_returns) == self.args.test_nepisode:
-            self._log(cur_returns, cur_stats, log_prefix)            
+            self._log(cur_returns, cur_stats, log_prefix)         
 
         return render_images
