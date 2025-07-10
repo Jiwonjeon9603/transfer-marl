@@ -5,13 +5,19 @@ import torch.nn.functional as F
 
 from utils.embed import polynomial_embed, binary_embed
 from utils.transformer import Transformer
-class UPDeTAgent(nn.Module):
-    """  sotax agent for multi-task learning """
 
-    def __init__(self, task2input_shape_info, task2decomposer, task2n_agents, decomposer, args):
+
+class UPDeTAgent(nn.Module):
+    """sotax agent for multi-task learning"""
+
+    def __init__(
+        self, task2input_shape_info, task2decomposer, task2n_agents, decomposer, args
+    ):
         super(UPDeTAgent, self).__init__()
-        self.task2last_action_shape = {task: task2input_shape_info[task]["last_action_shape"] for task in
-                                       task2input_shape_info}
+        self.task2last_action_shape = {
+            task: task2input_shape_info[task]["last_action_shape"]
+            for task in task2input_shape_info
+        }
         self.task2decomposer = task2decomposer
         self.task2n_agents = task2n_agents
         self.args = args
@@ -27,7 +33,7 @@ class UPDeTAgent(nn.Module):
         obs_own_dim = decomposer.own_obs_dim
         obs_en_dim, obs_al_dim = decomposer.obs_nf_en, decomposer.obs_nf_al
         n_actions_no_attack = decomposer.n_actions_no_attack
-        
+
         has_attack_action = n_actions_no_attack != decomposer.n_actions
         if has_attack_action:
             ## get wrapped obs_own_dim
@@ -42,28 +48,35 @@ class UPDeTAgent(nn.Module):
         self.own_value = nn.Linear(wrapped_obs_own_dim, self.entity_embed_dim)
         # self.skill_value = nn.Linear(self.skill_dim, self.entity_embed_dim)
 
-
-        self.transformer = Transformer(self.entity_embed_dim, args.head, args.depth, self.entity_embed_dim)
+        self.transformer = Transformer(
+            self.entity_embed_dim, args.head, args.depth, self.entity_embed_dim
+        )
 
         self.q_skill = nn.Linear(self.entity_embed_dim, n_actions_no_attack)
-        
+
         self.virtual_task = getattr(args, "virtual_task", False)
-        
+
         if self.virtual_task:
             self.num_vally = args.virtual_n_enemies
             self.num_venemy = args.virtual_n_enemies
             self.virtual_timeago = args.virtual_timeago
-            self.previous_tokens=[]    
+            self.previous_tokens = []
             self.virtual_ratio = args.virtual_ratio
-            
-        
-        
 
     def init_hidden(self):
         # make hidden states on the same device as model
         return self.q_skill.weight.new(1, self.args.entity_embed_dim).zero_()
 
-    def forward(self, inputs, hidden_state, task, virtual_hidden_state=None, data_actions=None, token_dropout = 0, test_mode = False):
+    def forward(
+        self,
+        inputs,
+        hidden_state,
+        task,
+        virtual_hidden_state=None,
+        data_actions=None,
+        token_dropout=0,
+        test_mode=False,
+    ):
         hidden_state = hidden_state.view(-1, 1, self.entity_embed_dim)
         # get decomposer, last_action_shape and n_agents of this specific task
         task_decomposer = self.task2decomposer[task]
@@ -72,30 +85,44 @@ class UPDeTAgent(nn.Module):
 
         # decompose inputs into observation inputs, last_action_info, agent_id_info
         obs_dim = task_decomposer.obs_dim
-        obs_inputs, last_action_inputs, agent_id_inputs = inputs[:, :obs_dim], \
-                                                          inputs[:, obs_dim:obs_dim + last_action_shape], inputs[:,
-                                                                                                          obs_dim + last_action_shape:]
+        obs_inputs, last_action_inputs, agent_id_inputs = (
+            inputs[:, :obs_dim],
+            inputs[:, obs_dim : obs_dim + last_action_shape],
+            inputs[:, obs_dim + last_action_shape :],
+        )
 
         # decompose observation input
-        own_obs, enemy_feats, ally_feats = task_decomposer.decompose_obs(obs_inputs)  # own_obs: [bs*self.n_agents, own_obs_dim]
+        own_obs, enemy_feats, ally_feats = task_decomposer.decompose_obs(
+            obs_inputs
+        )  # own_obs: [bs*self.n_agents, own_obs_dim]
         bs = int(own_obs.shape[0] / task_n_agents)
 
-######################################### Agent id input, compact action states ????? #########################################
+        ######################################### Agent id input, compact action states ????? #########################################
 
         # embed agent_id inputs and decompose last_action_inputs
         agent_id_inputs = [
-            th.as_tensor(binary_embed(i + 1, self.args.id_length, self.args.max_agent), dtype=own_obs.dtype) for i in
-            range(task_n_agents)]
-        agent_id_inputs = th.stack(agent_id_inputs, dim=0).repeat(bs, 1).to(own_obs.device)
-        _, attack_action_info, compact_action_states = task_decomposer.decompose_action_info(last_action_inputs)
+            th.as_tensor(
+                binary_embed(i + 1, self.args.id_length, self.args.max_agent),
+                dtype=own_obs.dtype,
+            )
+            for i in range(task_n_agents)
+        ]
+        agent_id_inputs = (
+            th.stack(agent_id_inputs, dim=0).repeat(bs, 1).to(own_obs.device)
+        )
+        _, attack_action_info, compact_action_states = (
+            task_decomposer.decompose_action_info(last_action_inputs)
+        )
 
         # incorporate agent_id embed and compact_action_states
         own_obs = th.cat([own_obs, agent_id_inputs, compact_action_states], dim=-1)
-        
+
         # incorporate attack_action_info into enemy_feats
         if np.prod(attack_action_info.shape) > 0:
             attack_action_info = attack_action_info.transpose(0, 1).unsqueeze(-1)
-            enemy_feats = th.cat([th.stack(enemy_feats, dim=0), attack_action_info], dim=-1)
+            enemy_feats = th.cat(
+                [th.stack(enemy_feats, dim=0), attack_action_info], dim=-1
+            )
         else:
             enemy_feats = th.stack(enemy_feats, dim=0)
         ally_feats = th.stack(ally_feats, dim=0)
@@ -107,10 +134,12 @@ class UPDeTAgent(nn.Module):
         # skill_hidden = self.skill_value(skill).unsqueeze(1)
         history_hidden = hidden_state
 
-        total_hidden = th.cat([own_hidden, enemy_hidden, ally_hidden, history_hidden], dim=1)
-        
+        total_hidden = th.cat(
+            [own_hidden, enemy_hidden, ally_hidden, history_hidden], dim=1
+        )
+
         self.previous_tokens.append(total_hidden)
-       
+
         if self.virtual_task and not test_mode:
             if task == "3m":
                 num_v_enemy = 1
@@ -128,41 +157,56 @@ class UPDeTAgent(nn.Module):
             ################ with another episodes #####################
             # bsn = own_hidden.shape[0]
             # v_own_hidden = own_hidden[:int(bsn/2)]
-            
+
             # ### virtual enemy ###
             # v_enemy_hidden = th.cat([enemy_hidden[:int(bsn/2)], enemy_hidden[int(bsn/2):][:, :num_v_enemy, :]], dim=1)
-            
+
             # ### virtual ally ###
             # v_ally_hidden = th.cat([ally_hidden[:int(bsn/2)], ally_hidden[int(bsn/2):][:, :num_v_ally, :]], dim=1)
-            
+
             # v_history = virtual_hidden_state.view(-1, 1, self.entity_embed_dim)
-            
+
             # v_total_hidden = th.cat([v_own_hidden, v_enemy_hidden, v_ally_hidden, v_history], dim=1)
             ############################################################
-            
+
             ################## Smae episode ##############################
 
-            
             bsn = own_hidden.shape[0]
             if len(self.previous_tokens) > self.virtual_timeago:
-                prev_hidden = self.previous_tokens[-1-self.virtual_timeago]
+                prev_hidden = self.previous_tokens[-1 - self.virtual_timeago]
             else:
                 prev_hidden = total_hidden
-                
+
             own_feat_size = own_hidden.shape[1]
             enemy_feat_size = enemy_hidden.shape[1]
             ally_feat_size = ally_hidden.shape[1]
             history_feat_size = history_hidden.shape[1]
-            
-            v_own_f, v_enemy_f, v_ally_f, _ = prev_hidden.split([own_feat_size, enemy_feat_size, ally_feat_size, history_feat_size], dim=1)
-            
 
-            v_own_hidden = v_own_f[:int(bsn/self.virtual_ratio), :]
-            v_enemy_hidden = th.cat([v_enemy_f[:int(bsn/self.virtual_ratio)], v_enemy_f[:int(bsn/self.virtual_ratio), :num_v_enemy, :]], dim=1)
-            v_ally_hidden = th.cat([v_ally_f[:int(bsn/self.virtual_ratio)], v_ally_f[:int(bsn/self.virtual_ratio), :num_v_ally, :]], dim=1)
+            v_own_f, v_enemy_f, v_ally_f, _ = prev_hidden.split(
+                [own_feat_size, enemy_feat_size, ally_feat_size, history_feat_size],
+                dim=1,
+            )
+
+            v_own_hidden = v_own_f[: int(bsn / self.virtual_ratio), :]
+            v_enemy_hidden = th.cat(
+                [
+                    v_enemy_f[: int(bsn / self.virtual_ratio)],
+                    v_enemy_f[: int(bsn / self.virtual_ratio), :num_v_enemy, :],
+                ],
+                dim=1,
+            )
+            v_ally_hidden = th.cat(
+                [
+                    v_ally_f[: int(bsn / self.virtual_ratio)],
+                    v_ally_f[: int(bsn / self.virtual_ratio), :num_v_ally, :],
+                ],
+                dim=1,
+            )
             v_history = virtual_hidden_state.view(-1, 1, self.entity_embed_dim)
-            v_history = v_history[:int(bsn/self.virtual_ratio)]
-            v_total_hidden = th.cat([v_own_hidden, v_enemy_hidden, v_ally_hidden, v_history], dim=1)
+            v_history = v_history[: int(bsn / self.virtual_ratio)]
+            v_total_hidden = th.cat(
+                [v_own_hidden, v_enemy_hidden, v_ally_hidden, v_history], dim=1
+            )
 
             outputs_virtual = self.transformer(v_total_hidden, None)
 
@@ -172,10 +216,10 @@ class UPDeTAgent(nn.Module):
                 token_mask = th.ones(hb, ht, ht, device=own_obs.device)
 
                 data_actions_flat = data_actions.squeeze(-1).reshape(-1)
-                col_prob = (th.rand(hb, ht - 2, device=own_obs.device) < token_dropout)
+                col_prob = th.rand(hb, ht - 2, device=own_obs.device) < token_dropout
 
                 col_mask = th.zeros(hb, ht, dtype=th.bool, device=own_obs.device)
-                col_mask[:, 1:ht - 1] = col_prob
+                col_mask[:, 1 : ht - 1] = col_prob
 
                 mask_condition = data_actions_flat > 5
                 selected_idx = th.arange(hb, device=own_obs.device)[mask_condition]
@@ -185,7 +229,7 @@ class UPDeTAgent(nn.Module):
                 mask_2d = (~col_mask).float()
                 token_mask = mask_2d.unsqueeze(1) * mask_2d.unsqueeze(2)
 
-                outputs = self.transformer(total_hidden, token_mask)        
+                outputs = self.transformer(total_hidden, token_mask)
             else:
                 outputs = self.transformer(total_hidden, None)
         else:
@@ -197,7 +241,7 @@ class UPDeTAgent(nn.Module):
 
         q_all = self.q_skill(outputs)
         q_base = q_all[:, 0, :]
-        q_attack = th.mean(q_all[:, 1:enemy_feats.size(0)+1, :], -1)
+        q_attack = th.mean(q_all[:, 1 : enemy_feats.size(0) + 1, :], -1)
         q = th.cat([q_base, q_attack], dim=-1)
 
         if task_decomposer.n_actions_no_attack == task_decomposer.n_actions:
@@ -212,20 +256,20 @@ class UPDeTAgent(nn.Module):
         #     q_attack = th.stack(q_attack_list, dim=1).squeeze()
 
         #     q = th.cat([q_base, q_attack], dim=-1)
-        
-        
+
         if self.virtual_task and not test_mode:
             h_v = outputs_virtual[:, -1:, :]
-            
-            
+
             q_all_v = self.q_skill(outputs_virtual)
             q_base_v = q_all_v[:, 0, :]
-            q_attack_v = th.mean(q_all_v[:, 1 :enemy_feats.size(0) + num_v_enemy + 1, :], -1)
+            q_attack_v = th.mean(
+                q_all_v[:, 1 : enemy_feats.size(0) + num_v_enemy + 1, :], -1
+            )
             q_v = th.cat([q_base_v, q_attack_v], dim=-1)
 
             if task_decomposer.n_actions_no_attack == task_decomposer.n_actions:
                 q_v = q_base
-                
+
             return q, h, q_v, h_v
 
         else:

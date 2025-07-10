@@ -43,11 +43,13 @@ actions = {
     "heal": 386,  # Unit
 }
 
+
 class Direction(enum.IntEnum):
     NORTH = 0
     SOUTH = 1
     EAST = 2
     WEST = 3
+
 
 class SC2Decomposer:
     def __init__(self, args):
@@ -87,15 +89,34 @@ class SC2Decomposer:
         self.map_type = map_params["map_type"]
 
         # get the shape of obs' components
-        self.move_feats, self.enemy_feats, self.ally_feats, self.own_feats, self.obs_nf_en, self.obs_nf_al = \
-            self.get_obs_size()
+        (
+            self.move_feats,
+            self.enemy_feats,
+            self.ally_feats,
+            self.own_feats,
+            self.obs_nf_en,
+            self.obs_nf_al,
+        ) = self.get_obs_size()
         self.own_obs_dim = self.move_feats + self.own_feats
-        self.obs_dim = self.move_feats + self.enemy_feats + self.ally_feats + self.own_feats
+        self.obs_dim = (
+            self.move_feats + self.enemy_feats + self.ally_feats + self.own_feats
+        )
 
         # get the shape of state's components
-        self.enemy_state_dim, self.ally_state_dim, self.last_action_state_dim, self.timestep_number_state_dim, self.state_nf_en, self.state_nf_al = \
-            self.get_state_size()
-        self.state_dim = self.enemy_state_dim + self.ally_state_dim + self.last_action_state_dim + self.timestep_number_state_dim
+        (
+            self.enemy_state_dim,
+            self.ally_state_dim,
+            self.last_action_state_dim,
+            self.timestep_number_state_dim,
+            self.state_nf_en,
+            self.state_nf_al,
+        ) = self.get_state_size()
+        self.state_dim = (
+            self.enemy_state_dim
+            + self.ally_state_dim
+            + self.last_action_state_dim
+            + self.timestep_number_state_dim
+        )
 
     def get_obs_size(self):
         nf_al = 4 + self.unit_type_bits
@@ -122,42 +143,64 @@ class SC2Decomposer:
 
         enemy_feats = self.n_enemies * nf_en
         ally_feats = (self.n_agents - 1) * nf_al
-        
+
         return move_feats, enemy_feats, ally_feats, own_feats, nf_en, nf_al
 
     def get_state_size(self):
         if self.obs_instead_of_state:
             raise Exception("Not Implemented for obs_instead_of_state")
-        
+
         nf_al = 4 + self.shield_bits_ally + self.unit_type_bits
         nf_en = 3 + self.shield_bits_enemy + self.unit_type_bits
-        
+
         enemy_state = self.n_enemies * nf_en
         ally_state = self.n_agents * nf_al
-        
+
         last_action_state, timestep_number_state = 0, 0
         if self.state_last_action:
             last_action_state = self.n_agents * self.n_actions
         if self.state_timestep_number:
             timestep_number_state = 1
-        
-        return enemy_state, ally_state, last_action_state, timestep_number_state, nf_en, nf_al
+
+        return (
+            enemy_state,
+            ally_state,
+            last_action_state,
+            timestep_number_state,
+            nf_en,
+            nf_al,
+        )
 
     def decompose_state(self, state_input):
         # state_input = [ally_state, enemy_state, last_action_state, timestep_number_state]
         # assume state_input.shape == [batch_size, seq_len, state]
-        
+
         # extract ally_states
-        ally_states = [state_input[:, :, i * self.state_nf_al:(i + 1) * self.state_nf_al] for i in range(self.n_agents)]
+        ally_states = [
+            state_input[:, :, i * self.state_nf_al : (i + 1) * self.state_nf_al]
+            for i in range(self.n_agents)
+        ]
         # extract enemy_states
         base = self.n_agents * self.state_nf_al
-        enemy_states = [state_input[:, :, base + i * self.state_nf_en:base + (i + 1) * self.state_nf_en] for i in range(self.n_enemies)]
+        enemy_states = [
+            state_input[
+                :, :, base + i * self.state_nf_en : base + (i + 1) * self.state_nf_en
+            ]
+            for i in range(self.n_enemies)
+        ]
         # extract last_action_states
         base += self.n_enemies * self.state_nf_en
-        last_action_states = [state_input[:, :, base + i * self.n_actions:base + (i + 1) * self.n_actions] for i in range(self.n_agents)]
+        last_action_states = [
+            state_input[
+                :, :, base + i * self.n_actions : base + (i + 1) * self.n_actions
+            ]
+            for i in range(self.n_agents)
+        ]
         # extract timestep_number_state
         base += self.n_agents * self.n_actions
-        timestep_number_state = state_input[:, :, base:base+self.timestep_number_state_dim]        
+        timestep_number_state = state_input[
+            :, :, base : base + self.timestep_number_state_dim
+        ]
 
         return ally_states, enemy_states, last_action_states, timestep_number_state
 
@@ -166,25 +209,29 @@ class SC2Decomposer:
         obs_input: env_obs + last_action + agent_id
         env_obs = [move_feats, enemy_feats, ally_feats, own_feats]
         """
-        
+
         # extract move feats
-        move_feats = obs_input[:, :self.move_feats]
+        move_feats = obs_input[:, : self.move_feats]
         # extract enemy_feats
         base = self.move_feats
-        enemy_feats = [obs_input[:, base + i * self.obs_nf_en:base + (i + 1) * self.obs_nf_en] for i in range(self.n_enemies)]
+        enemy_feats = [
+            obs_input[:, base + i * self.obs_nf_en : base + (i + 1) * self.obs_nf_en]
+            for i in range(self.n_enemies)
+        ]
         # extract ally_feats
         base += self.obs_nf_en * self.n_enemies
-        ally_feats = [obs_input[:, base + i * self.obs_nf_al:base + (i + 1) * self.obs_nf_al] for i in range(self.n_agents - 1)]
+        ally_feats = [
+            obs_input[:, base + i * self.obs_nf_al : base + (i + 1) * self.obs_nf_al]
+            for i in range(self.n_agents - 1)
+        ]
         # extract own feats
         base += self.obs_nf_al * (self.n_agents - 1)
-        own_feats = obs_input[:, base:base + self.own_feats]
-      
+        own_feats = obs_input[:, base : base + self.own_feats]
+
         # own
         own_obs = th.cat([move_feats, own_feats], dim=-1)
-        
+
         return own_obs, enemy_feats, ally_feats
-
-
 
     def decompose_action_info(self, action_info):
         """
@@ -193,10 +240,14 @@ class SC2Decomposer:
         shape = action_info.shape
         if len(shape) > 2:
             action_info = action_info.reshape(np.prod(shape[:-1]), shape[-1])
-        no_attack_action_info = action_info[:, :self.n_actions_no_attack]
-        attack_action_info = action_info[:, self.n_actions_no_attack:self.n_actions_no_attack + self.n_enemies]
+        no_attack_action_info = action_info[:, : self.n_actions_no_attack]
+        attack_action_info = action_info[
+            :, self.n_actions_no_attack : self.n_actions_no_attack + self.n_enemies
+        ]
         # recover shape
-        no_attack_action_info = no_attack_action_info.reshape(*shape[:-1], self.n_actions_no_attack)    
+        no_attack_action_info = no_attack_action_info.reshape(
+            *shape[:-1], self.n_actions_no_attack
+        )
         attack_action_info = attack_action_info.reshape(*shape[:-1], self.n_enemies)
         # get compact action
         bin_attack_info = th.sum(attack_action_info, dim=-1).unsqueeze(-1)

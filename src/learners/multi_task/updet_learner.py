@@ -12,6 +12,7 @@ import math
 import os
 import wandb
 
+
 class UPDeTLearner:
     def __init__(self, mac, logger, main_args):
         self.main_args = main_args
@@ -44,9 +45,17 @@ class UPDeTLearner:
             self.target_mixer = copy.deepcopy(self.mixer)
 
         if main_args.optim_type.lower() == "rmsprop":
-            self.optimiser = RMSprop(params=self.params, lr=main_args.lr, alpha=main_args.optim_alpha, eps=main_args.optim_eps, weight_decay=main_args.weight_decay)
+            self.optimiser = RMSprop(
+                params=self.params,
+                lr=main_args.lr,
+                alpha=main_args.optim_alpha,
+                eps=main_args.optim_eps,
+                weight_decay=main_args.weight_decay,
+            )
         elif main_args.optim_type.lower() == "adam":
-            self.optimiser = Adam(params=self.params, lr=main_args.lr, weight_decay=main_args.weight_decay)
+            self.optimiser = Adam(
+                params=self.params, lr=main_args.lr, weight_decay=main_args.weight_decay
+            )
         else:
             raise ValueError("Invalid optimiser type", main_args.optim_type)
 
@@ -54,14 +63,22 @@ class UPDeTLearner:
         self.target_mac = copy.deepcopy(mac)
 
         # define attributes for each specific task
-        self.task2train_info, self.task2encoder_params, self.task2encoder_optimiser = {}, {}, {}
+        self.task2train_info, self.task2encoder_params, self.task2encoder_optimiser = (
+            {},
+            {},
+            {},
+        )
         self.task2repre_dir = {}
         for task in self.task2args:
             task_args = self.task2args[task]
             self.task2train_info[task] = {}
-            self.task2train_info[task]["log_stats_t"] = -task_args.learner_log_interval - 1
+            self.task2train_info[task]["log_stats_t"] = (
+                -task_args.learner_log_interval - 1
+            )
             # define task_encoder optimiser for this task
-            self.task2train_info[task]["to_do_dynamic_learning"] = getattr(task_args, "pretrain", False)
+            self.task2train_info[task]["to_do_dynamic_learning"] = getattr(
+                task_args, "pretrain", False
+            )
 
         self.c = main_args.c_step
         self.skill_dim = main_args.skill_dim
@@ -71,11 +88,13 @@ class UPDeTLearner:
         self.cons_type = main_args.type_conservative
 
         self.current_steps = 0
-        
+
         self.virtual_task = main_args.virtual_task
         self.virtual_lam = main_args.virtual_lam
 
-    def train_policy(self, batch: EpisodeBatch, t_env: int, episode_num: int, task: str):
+    def train_policy(
+        self, batch: EpisodeBatch, t_env: int, episode_num: int, task: str
+    ):
         # Get the relevant quantities
         rewards = batch["reward"][:, :]
         actions = batch["actions"][:, :]
@@ -90,36 +109,62 @@ class UPDeTLearner:
         self.mac.init_hidden(batch.batch_size, task)
         for t in range(batch.max_seq_length):
             if self.virtual_task:
-                agent_outs, virtual_agent_outs = self.mac.forward(batch, t=t, task=task, token_dropout=self.main_args.token_dropout)
+                agent_outs, virtual_agent_outs = self.mac.forward(
+                    batch, t=t, task=task, token_dropout=self.main_args.token_dropout
+                )
                 mac_out.append(agent_outs)
                 virtual_mac_out.append(virtual_agent_outs)
             else:
-                agent_outs = self.mac.forward(batch, t=t, task=task, token_dropout=self.main_args.token_dropout)
+                agent_outs = self.mac.forward(
+                    batch, t=t, task=task, token_dropout=self.main_args.token_dropout
+                )
                 mac_out.append(agent_outs)
         mac_out = th.stack(mac_out, dim=1)  # Concat over time
-        
+
         if self.virtual_task:
             virtual_mac_out = th.stack(virtual_mac_out, dim=1)
-            
+
             vb, vt, vn, va = virtual_mac_out.size()
             virtual_rewards = rewards[:vb]
             virtual_actions = actions[:vb]
             virtual_terminated = terminated[:vb]
             virtual_mask = mask[:vb]
-            virtual_avail_actions = F.pad(avail_actions[:vb], pad=(0, va - avail_actions.shape[-1]))
-            
-        
+            virtual_avail_actions = F.pad(
+                avail_actions[:vb], pad=(0, va - avail_actions.shape[-1])
+            )
+
         if self.main_args.bc:
             b, t, n, a = mac_out.size()
-            bc_loss = (F.cross_entropy(mac_out.reshape(-1, a), actions.squeeze(-1).reshape(-1), reduction="sum") / mask.sum()) / n
+            bc_loss = (
+                F.cross_entropy(
+                    mac_out.reshape(-1, a),
+                    actions.squeeze(-1).reshape(-1),
+                    reduction="sum",
+                )
+                / mask.sum()
+            ) / n
 
         # Pick the Q-Values for the actions taken by each agent
-        chosen_action_qvals = th.gather(mac_out[:, :], dim=3, index=actions[:, :]).squeeze(3)  # Remove the last dim
+        chosen_action_qvals = th.gather(
+            mac_out[:, :], dim=3, index=actions[:, :]
+        ).squeeze(
+            3
+        )  # Remove the last dim
 
         if self.virtual_task:
-            virtual_bc_loss = (F.cross_entropy(virtual_mac_out.reshape(-1, va), virtual_actions.squeeze(-1).reshape(-1), reduction="sum") / virtual_mask.sum()) / vn
-            virtual_chosen_action_qvals = th.gather(virtual_mac_out[:, :], dim=3, index=virtual_actions[:, :]).squeeze(3)  # Remove the last dim
-
+            virtual_bc_loss = (
+                F.cross_entropy(
+                    virtual_mac_out.reshape(-1, va),
+                    virtual_actions.squeeze(-1).reshape(-1),
+                    reduction="sum",
+                )
+                / virtual_mask.sum()
+            ) / vn
+            virtual_chosen_action_qvals = th.gather(
+                virtual_mac_out[:, :], dim=3, index=virtual_actions[:, :]
+            ).squeeze(
+                3
+            )  # Remove the last dim
 
         # Calculate the Q-Values necessary for the target
         target_mac_out = []
@@ -127,11 +172,15 @@ class UPDeTLearner:
         self.target_mac.init_hidden(batch.batch_size, task)
         for t in range(batch.max_seq_length):
             if self.virtual_task:
-                target_agent_outs, virtual_target_agent_outs = self.target_mac.forward(batch, t=t, task=task, token_dropout=0)
+                target_agent_outs, virtual_target_agent_outs = self.target_mac.forward(
+                    batch, t=t, task=task, token_dropout=0
+                )
                 virtual_target_mac_out.append(virtual_target_agent_outs)
                 target_mac_out.append(target_agent_outs)
             else:
-                target_agent_outs = self.target_mac.forward(batch, t=t, task=task, token_dropout=0)
+                target_agent_outs = self.target_mac.forward(
+                    batch, t=t, task=task, token_dropout=0
+                )
                 target_mac_out.append(target_agent_outs)
 
         # We don't need the first timesteps Q-Value estimate for calculating targets
@@ -144,8 +193,6 @@ class UPDeTLearner:
             virtual_target_mac_out = th.stack(virtual_target_mac_out, dim=1)
             virtual_target_mac_out[virtual_avail_actions[:, :] == 0] = -9999999
 
-
-
         # Max over target Q-Values
         if self.main_args.double_q:
             # Get actions that maximise live Q (for double q-learning)
@@ -157,63 +204,79 @@ class UPDeTLearner:
             if self.virtual_task:
                 virtual_mac_out_detach = virtual_mac_out.clone().detach()
                 virtual_mac_out_detach[virtual_avail_actions == 0] = -9999999
-                virtual_cur_max_actions = virtual_mac_out_detach[:, :].max(dim=3, keepdim=True)[1]
-                virtual_target_max_qvals = th.gather(virtual_target_mac_out, 3, virtual_cur_max_actions).squeeze(3)
+                virtual_cur_max_actions = virtual_mac_out_detach[:, :].max(
+                    dim=3, keepdim=True
+                )[1]
+                virtual_target_max_qvals = th.gather(
+                    virtual_target_mac_out, 3, virtual_cur_max_actions
+                ).squeeze(3)
 
             cons_max_qvals = th.gather(mac_out, 3, cur_max_actions).squeeze(3)
         else:
             target_max_qvals = target_mac_out.max(dim=3)[0]
-            
+
             if self.virtual_task:
                 virtual_target_max_qvals = virtual_target_mac_out.max(dim=3)[0]
 
         # Mix
         bs, seq_len = chosen_action_qvals.size(0), chosen_action_qvals.size(1)
         if self.mixer is not None:
-            chosen_action_qvals = self.mixer(chosen_action_qvals, batch["state"][:, :],
-                                             self.task2decomposer[task])
-            target_max_qvals = self.target_mixer(target_max_qvals, batch["state"][:, :],
-                                                 self.task2decomposer[task])
+            chosen_action_qvals = self.mixer(
+                chosen_action_qvals, batch["state"][:, :], self.task2decomposer[task]
+            )
+            target_max_qvals = self.target_mixer(
+                target_max_qvals, batch["state"][:, :], self.task2decomposer[task]
+            )
 
-            cons_max_qvals = self.mixer(cons_max_qvals, batch["state"][:, :],
-                                        self.task2decomposer[task])
+            cons_max_qvals = self.mixer(
+                cons_max_qvals, batch["state"][:, :], self.task2decomposer[task]
+            )
 
         # Calculate c-step Q-Learning targets
-        targets = rewards[:, :-self.c] + self.main_args.gamma * (
-                    1 - terminated[:, self.c - 1:-1]) * target_max_qvals[:, self.c:]
+        targets = (
+            rewards[:, : -self.c]
+            + self.main_args.gamma
+            * (1 - terminated[:, self.c - 1 : -1])
+            * target_max_qvals[:, self.c :]
+        )
 
         # Td-error
-        td_error = (chosen_action_qvals[:, :-self.c] - targets.detach())
+        td_error = chosen_action_qvals[:, : -self.c] - targets.detach()
 
         if self.virtual_task:
-            virtual_targets = virtual_rewards[:, :-self.c] + self.main_args.gamma * (
-                    1 - virtual_terminated[:, self.c - 1:-1]) * th.sum(virtual_target_max_qvals, dim=-1, keepdim=True)[:, self.c:]
-        
-            virtual_td_error = (th.sum(virtual_chosen_action_qvals, dim=-1, keepdim=True)[:, :-self.c] - virtual_targets.detach())
+            virtual_targets = (
+                virtual_rewards[:, : -self.c]
+                + self.main_args.gamma
+                * (1 - virtual_terminated[:, self.c - 1 : -1])
+                * th.sum(virtual_target_max_qvals, dim=-1, keepdim=True)[:, self.c :]
+            )
 
+            virtual_td_error = (
+                th.sum(virtual_chosen_action_qvals, dim=-1, keepdim=True)[:, : -self.c]
+                - virtual_targets.detach()
+            )
 
         # Cons-error
-        cons_error = (cons_max_qvals - chosen_action_qvals)
+        cons_error = cons_max_qvals - chosen_action_qvals
 
         mask = mask[:, :].expand_as(cons_error)
 
         # 0-out the targets that came from padded data
-        masked_td_error = td_error * mask[:, :-self.c]
+        masked_td_error = td_error * mask[:, : -self.c]
         masked_cons_error = cons_error * mask
 
         # Normal L2 loss, take mean over actual data
-        td_loss = (masked_td_error ** 2).sum() / mask[:, :-self.c].sum()
+        td_loss = (masked_td_error**2).sum() / mask[:, : -self.c].sum()
         cons_loss = masked_cons_error.sum() / mask.sum()
-        
+
         if self.virtual_task:
-            virtual_mask = virtual_mask[:,:-self.c].expand_as(virtual_td_error)
+            virtual_mask = virtual_mask[:, : -self.c].expand_as(virtual_td_error)
             masked_virtual_td_error = virtual_td_error * virtual_mask
-            virtual_td_loss = (masked_virtual_td_error ** 2).sum() / virtual_mask.sum()
+            virtual_td_loss = (masked_virtual_td_error**2).sum() / virtual_mask.sum()
             virtual_loss = self.virtual_lam * (virtual_td_loss + virtual_bc_loss)
         else:
             virtual_loss = 0
-        
-        
+
         if self.main_args.bc:
             loss = td_loss + bc_loss + virtual_loss
 
@@ -223,7 +286,9 @@ class UPDeTLearner:
         # Do RL Learning
         self.optimiser.zero_grad()
         loss.backward()
-        grad_norm = th.nn.utils.clip_grad_norm_(self.params, self.main_args.grad_norm_clip)
+        grad_norm = th.nn.utils.clip_grad_norm_(
+            self.params, self.main_args.grad_norm_clip
+        )
         self.optimiser.step()
         # get scalar for tensorboard logging
         try:
@@ -232,34 +297,52 @@ class UPDeTLearner:
             pass
 
         # episode_num should be pulic
-        if (t_env - self.last_target_update_episode) / self.main_args.target_update_interval >= 1.0:
+        if (
+            t_env - self.last_target_update_episode
+        ) / self.main_args.target_update_interval >= 1.0:
             self._update_targets()
             self.last_target_update_episode = t_env
 
-        if t_env - self.task2train_info[task]["log_stats_t"] >= self.task2args[task].learner_log_interval:
+        if (
+            t_env - self.task2train_info[task]["log_stats_t"]
+            >= self.task2args[task].learner_log_interval
+        ):
             self.logger.log_stat(f"{task}/loss", loss.item(), t_env)
             self.logger.log_stat(f"{task}/td_loss", td_loss.item(), t_env)
             self.logger.log_stat(f"{task}/bc_loss", bc_loss.item(), t_env)
             self.logger.log_stat(f"{task}/grad_norm", grad_norm, t_env)
             mask_elems = mask.sum().item()
-            self.logger.log_stat(f"{task}/td_error_abs", (masked_td_error.abs().sum().item() / mask_elems), t_env)
-            self.logger.log_stat(f"{task}/q_taken_mean", (chosen_action_qvals * mask).sum().item() / (
-                    mask_elems * self.task2args[task].n_agents), t_env)
-            self.logger.log_stat(f"{task}/target_mean",
-                                 (targets * mask[:, :-self.c]).sum().item() / (
-                                             mask_elems * self.task2args[task].n_agents), t_env)
+            self.logger.log_stat(
+                f"{task}/td_error_abs",
+                (masked_td_error.abs().sum().item() / mask_elems),
+                t_env,
+            )
+            self.logger.log_stat(
+                f"{task}/q_taken_mean",
+                (chosen_action_qvals * mask).sum().item()
+                / (mask_elems * self.task2args[task].n_agents),
+                t_env,
+            )
+            self.logger.log_stat(
+                f"{task}/target_mean",
+                (targets * mask[:, : -self.c]).sum().item()
+                / (mask_elems * self.task2args[task].n_agents),
+                t_env,
+            )
             self.task2train_info[task]["log_stats_t"] = t_env
-            
+
             self.logger.log_stat(f"{task}/virtual_loss", virtual_loss.item(), t_env)
-            self.logger.log_stat(f"{task}/virtual_td_loss", virtual_td_loss.item(), t_env)
-            self.logger.log_stat(f"{task}/virtual_bc_loss", virtual_bc_loss.item(), t_env)
-            
-            
+            self.logger.log_stat(
+                f"{task}/virtual_td_loss", virtual_td_loss.item(), t_env
+            )
+            self.logger.log_stat(
+                f"{task}/virtual_bc_loss", virtual_bc_loss.item(), t_env
+            )
+
             # wandb.log({f"{task}_tot_loss": loss.item()}, step=t_env)
             # wandb.log({f"{task}_bc_loss": bc_loss.item()}, step=t_env)
             # wandb.log({f"{task}_td_loss": td_loss.item()}, step=t_env)
             # wandb.log({f"{task}_virtual_loss": virtual_td_loss.item()}, step=t_env)
-            
 
     def pretrain(self, batch: EpisodeBatch, t_env: int, episode_num: int, task: str):
         # self.train_vae(batch, t_env, episode_num, task)
@@ -293,5 +376,12 @@ class UPDeTLearner:
         # Not quite right but I don't want to save target networks
         self.target_mac.load_models(path)
         if self.mixer is not None:
-            self.mixer.load_state_dict(th.load("{}/mixer.th".format(path), map_location=lambda storage, loc: storage))
-        self.optimiser.load_state_dict(th.load("{}/opt.th".format(path), map_location=lambda storage, loc: storage))
+            self.mixer.load_state_dict(
+                th.load(
+                    "{}/mixer.th".format(path),
+                    map_location=lambda storage, loc: storage,
+                )
+            )
+        self.optimiser.load_state_dict(
+            th.load("{}/opt.th".format(path), map_location=lambda storage, loc: storage)
+        )

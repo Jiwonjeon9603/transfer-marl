@@ -15,7 +15,9 @@ class UPDeTMAC:
         self.train_tasks = train_tasks
         self.task2scheme = task2scheme
         self.task2args = task2args
-        self.task2n_agents = {task: self.task2args[task].n_agents for task in train_tasks}
+        self.task2n_agents = {
+            task: self.task2args[task].n_agents for task in train_tasks
+        }
         self.main_args = main_args
 
         # set some common attributes
@@ -45,35 +47,68 @@ class UPDeTMAC:
         self.skill_dim = main_args.skill_dim
         self.c_step = main_args.c_step
 
-    def select_actions(self, ep_batch, t_ep, t_env, task, bs=slice(None), test_mode=False):
+    def select_actions(
+        self, ep_batch, t_ep, t_env, task, bs=slice(None), test_mode=False
+    ):
         # Only select actions for the selected batch elements in bs
         avail_actions = ep_batch["avail_actions"][:, t_ep]
         agent_outputs = self.forward(ep_batch, t_ep, task, test_mode=test_mode)
-        chosen_actions = self.action_selector.select_action(agent_outputs[bs], avail_actions[bs], t_env,
-                                                            test_mode=test_mode)
+        chosen_actions = self.action_selector.select_action(
+            agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode
+        )
         return chosen_actions
 
-    def forward(self, ep_batch, t, task, token_dropout = 0, test_mode = False):
+    def forward(self, ep_batch, t, task, token_dropout=0, test_mode=False):
         agent_inputs = self._build_inputs(ep_batch, t, task)
         avail_actions = ep_batch["avail_actions"][:, t]
 
-        data_actions = ep_batch["actions"][:,t]
+        data_actions = ep_batch["actions"][:, t]
         bs = agent_inputs.shape[0] // self.task2n_agents[task]
-        
+
         if self.main_args.virtual_task:
             if test_mode:
-                agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states, task, self.virtual_hidden_states, data_actions, token_dropout, test_mode)
+                agent_outs, self.hidden_states = self.agent(
+                    agent_inputs,
+                    self.hidden_states,
+                    task,
+                    self.virtual_hidden_states,
+                    data_actions,
+                    token_dropout,
+                    test_mode,
+                )
             else:
-                agent_outs, self.hidden_states, virtual_agent_outs, self.virtual_hidden_states = self.agent(agent_inputs, self.hidden_states, task, self.virtual_hidden_states, data_actions, token_dropout, test_mode)
+                (
+                    agent_outs,
+                    self.hidden_states,
+                    virtual_agent_outs,
+                    self.virtual_hidden_states,
+                ) = self.agent(
+                    agent_inputs,
+                    self.hidden_states,
+                    task,
+                    self.virtual_hidden_states,
+                    data_actions,
+                    token_dropout,
+                    test_mode,
+                )
         else:
-            agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states, task, data_actions, token_dropout, test_mode)
+            agent_outs, self.hidden_states = self.agent(
+                agent_inputs,
+                self.hidden_states,
+                task,
+                data_actions,
+                token_dropout,
+                test_mode,
+            )
 
         # Softmax the agent outputs if they're policy logits
-        if self.agent_output_type == "pi_logits": ### Only in COMA
+        if self.agent_output_type == "pi_logits":  ### Only in COMA
 
             if getattr(self.main_args, "mask_before_softmax", True):
                 # Make the logits for unavailable actions very negative to minimise their affect on the softmax
-                reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.task2n_agents[task], -1)
+                reshaped_avail_actions = avail_actions.reshape(
+                    ep_batch.batch_size * self.task2n_agents[task], -1
+                )
                 agent_outs[reshaped_avail_actions == 0] = -1e10
 
             agent_outs = th.nn.functional.softmax(agent_outs, dim=-1)
@@ -82,36 +117,46 @@ class UPDeTMAC:
                 epsilon_action_num = agent_outs.size(-1)
                 if getattr(self.main_args, "mask_before_softmax", True):
                     # With probability epsilon, we will pick an available action uniformly
-                    epsilon_action_num = reshaped_avail_actions.sum(dim=1, keepdim=True).float()
+                    epsilon_action_num = reshaped_avail_actions.sum(
+                        dim=1, keepdim=True
+                    ).float()
 
-                agent_outs = ((1 - self.action_selector.epsilon) * agent_outs
-                              + th.ones_like(agent_outs) * self.action_selector.epsilon / epsilon_action_num)
+                agent_outs = (
+                    1 - self.action_selector.epsilon
+                ) * agent_outs + th.ones_like(
+                    agent_outs
+                ) * self.action_selector.epsilon / epsilon_action_num
 
                 if getattr(self.main_args, "mask_before_softmax", True):
                     # Zero out the unavailable actions
                     agent_outs[reshaped_avail_actions == 0] = 0.0
-        
+
         if self.main_args.virtual_task and not test_mode:
-            return agent_outs.view(ep_batch.batch_size, self.task2n_agents[task], -1), \
-                virtual_agent_outs.view(int(ep_batch.batch_size/2), self.task2n_agents[task], -1)
+            return agent_outs.view(
+                ep_batch.batch_size, self.task2n_agents[task], -1
+            ), virtual_agent_outs.view(
+                int(ep_batch.batch_size / 2), self.task2n_agents[task], -1
+            )
         else:
             return agent_outs.view(ep_batch.batch_size, self.task2n_agents[task], -1)
 
     def init_hidden(self, batch_size, task):
         # we always know we are in which task when do init_hidden
         n_agents = self.task2n_agents[task]
-        hidden_states = self.agent.init_hidden()   
+        hidden_states = self.agent.init_hidden()
         self.hidden_states = hidden_states.unsqueeze(0).expand(batch_size, n_agents, -1)
         if self.main_args.virtual_task:
-            virtual_hidden_states = self.agent.init_hidden()   
+            virtual_hidden_states = self.agent.init_hidden()
             self.agent.previous_tokens = []
-            self.virtual_hidden_states = virtual_hidden_states.unsqueeze(0).expand(batch_size, n_agents, -1)
+            self.virtual_hidden_states = virtual_hidden_states.unsqueeze(0).expand(
+                batch_size, n_agents, -1
+            )
 
     def parameters(self):
         return self.agent.parameters()
 
     def load_state(self, other_mac):
-        """ we don't load the state of task dynamic decoder """
+        """we don't load the state of task dynamic decoder"""
         self.agent.load_state_dict(other_mac.agent.state_dict())
 
     def cuda(self):
@@ -120,17 +165,25 @@ class UPDeTMAC:
         #     self.task2dynamic_decoder[task].cuda()
 
     def save_models(self, path):
-        """ we don't save the state of task dynamic decoder """
+        """we don't save the state of task dynamic decoder"""
         th.save(self.agent.state_dict(), "{}/agent.th".format(path))
 
     def load_models(self, path):
-        """ we don't load the state of task_encoder """
-        self.agent.load_state_dict(th.load("{}/agent.th".format(path), map_location=lambda storage, loc: storage))
+        """we don't load the state of task_encoder"""
+        self.agent.load_state_dict(
+            th.load(
+                "{}/agent.th".format(path), map_location=lambda storage, loc: storage
+            )
+        )
 
     def _build_agents(self, task2input_shape_info):
-        self.agent = agent_REGISTRY[self.main_args.agent](task2input_shape_info,
-                                                          self.task2decomposer, self.task2n_agents,
-                                                          self.surrogate_decomposer, self.main_args)
+        self.agent = agent_REGISTRY[self.main_args.agent](
+            task2input_shape_info,
+            self.task2decomposer,
+            self.task2n_agents,
+            self.surrogate_decomposer,
+            self.main_args,
+        )
 
     def _build_actions(self, actions):
         actions = actions.reshape(-1) - 5
@@ -152,7 +205,9 @@ class UPDeTMAC:
             else:
                 inputs.append(batch["actions_onehot"][:, t - 1])
         if task_args.obs_agent_id:
-            inputs.append(th.eye(n_agents, device=batch.device).unsqueeze(0).expand(bs, -1, -1))
+            inputs.append(
+                th.eye(n_agents, device=batch.device).unsqueeze(0).expand(bs, -1, -1)
+            )
 
         inputs = th.cat([x.reshape(bs * n_agents, -1) for x in inputs], dim=1)
         return inputs
@@ -175,5 +230,3 @@ class UPDeTMAC:
                 "agent_id_shape": agent_id_shape,
             }
         return task2input_shape_info
-
-
