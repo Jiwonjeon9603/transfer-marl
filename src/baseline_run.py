@@ -193,9 +193,9 @@ def draw_attention_heatmap(attention, task, num_steps_to_plot, batch_idx, first_
     plt.tight_layout(rect=[0, 0, 0.9, 0.95])
 
     # 저장
-    save_dir = os.path.join(os.getcwd(), "attention_drop_map")
+    save_dir = os.path.join(os.getcwd(), "attention_depth2")
     os.makedirs(save_dir, exist_ok=True)
-    filename = f"{task}_batch_{batch_idx}_grid.png"
+    filename = f"{task}_batch_{batch_idx}_grid_1th.png"
     save_path = os.path.join(save_dir, filename)
     plt.savefig(save_path, dpi=300)
     plt.close()
@@ -289,9 +289,9 @@ def draw_mean_attention_heatmap(attention, task, num_steps_to_plot, batch_idx, f
     plt.tight_layout(rect=[0, 0, 0.9, 0.95])  # ✅ 여유 공간 확보
 
     # 저장
-    save_dir = os.path.join(os.getcwd(), "attention_mean_drop0_map2")
+    save_dir = os.path.join(os.getcwd(), "attention_mean_depth2")
     os.makedirs(save_dir, exist_ok=True)
-    filename = f"{task}_batch_{batch_idx}_grid.png"
+    filename = f"{task}_batch_{batch_idx}_grid_1th.png"
     save_path = os.path.join(save_dir, filename)
     plt.savefig(save_path, dpi=300)
     plt.close()
@@ -384,7 +384,7 @@ def train_sequential(train_tasks, main_args, logger, learner, task2args, task2ru
                     one_attention = attention[batch_idx, :end_indices[batch_idx].item()].detach()
                     first_dead = first_zero_idx[batch_idx]
                     draw_attention_heatmap(attention=one_attention, task=task, num_steps_to_plot=main_args.heatmap_num_plots, batch_idx=batch_idx, first_dead=first_dead)
-                    # draw_mean_attention_heatmap(attention=one_attention, task=task, num_steps_to_plot=1, batch_idx=batch_idx, first_dead=first_dead)
+                    draw_mean_attention_heatmap(attention=one_attention, task=task, num_steps_to_plot=1, batch_idx=batch_idx, first_dead=first_dead)
                 continue
 
             if pretrain:

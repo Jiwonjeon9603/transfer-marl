@@ -136,7 +136,7 @@ class Transformer(nn.Module):
         self.num_tokens = output_dim
 
         # self.token_embedding = nn.Linear(input_dim, emb)
-
+        self.depth = depth
         tblocks = []
         for i in range(depth):
             tblocks.append(
@@ -160,8 +160,10 @@ class Transformer(nn.Module):
         return x  # , tokens
     
     def attention_heatmap(self, tokens, mask):
-        attn = self.tblocks[0].attention.attn_map(tokens, mask)
-        return attn
+        attns = []
+        for i in range(self.depth):
+            attns.append(self.tblocks[i].attention.attn_map(tokens, mask))
+        return attns
 
 def mask_(matrices, maskval=0.0, mask_diagonal=True):
 

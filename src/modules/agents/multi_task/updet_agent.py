@@ -103,7 +103,7 @@ class UPDeTAgent(nn.Module):
             heatmap = self.transformer.attention_heatmap(total_hidden, None)
             outputs = self.transformer(total_hidden, None)
             h = outputs[:, -1:, :]
-            return heatmap, h
+            return heatmap[1], h
         
 
         if token_dropout != 0:
