@@ -64,4 +64,4 @@ no_history: False
 hier_history: True
 high_step: 5
 
-algo_name: "Hier_Reasoning"
+algo_name: "HRM"

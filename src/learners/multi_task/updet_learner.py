@@ -105,13 +105,21 @@ class UPDeTLearner:
         avail_actions = batch["avail_actions"]
 
         mac_out = []
-
         self.mac.init_hidden(batch.batch_size, task)
         for t in range(batch.max_seq_length):            
             agent_outs = self.mac.forward(batch, t=t, task=task, token_dropout=self.main_args.token_dropout)
             mac_out.append(agent_outs)
         mac_out = th.stack(mac_out, dim=1)  # Concat over time
+
         
+        with th.no_grad():
+            target_input = []
+            self.mac.init_hidden(batch.batch_size, task)
+            for t in range(batch.max_seq_length):            
+                target_inputs = self.mac.forward(batch, t=t, task=task, token_dropout=0)
+                target_input.append(target_inputs)
+            target_input = th.stack(target_input, dim=1) 
+
         if self.main_args.bc:
             b, t, n, a = mac_out.size()
             bc_loss = (F.cross_entropy(mac_out.reshape(-1, a), actions.squeeze(-1).reshape(-1), reduction="sum") / mask.sum()) / n
@@ -136,9 +144,11 @@ class UPDeTLearner:
         # Max over target Q-Values
         if self.main_args.double_q:
             # Get actions that maximise live Q (for double q-learning)
-            mac_out_detach = mac_out.clone().detach()
-            mac_out_detach[avail_actions == 0] = -9999999
-            cur_max_actions = mac_out_detach[:, :].max(dim=3, keepdim=True)[1]
+            # mac_out_detach = mac_out.clone().detach()
+            # mac_out_detach[avail_actions == 0] = -9999999
+            target_input_detach = target_input.clone().detach()
+            target_input_detach[avail_actions == 0] = -9999999
+            cur_max_actions = target_input_detach[:, :].max(dim=3, keepdim=True)[1]
             target_max_qvals = th.gather(target_mac_out, 3, cur_max_actions).squeeze(3)
 
             cons_max_qvals = th.gather(mac_out, 3, cur_max_actions).squeeze(3)
