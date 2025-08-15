@@ -52,21 +52,12 @@ def run(_run, _config, _log):
     if not args.attention_heatmap:
         wandb.login(relogin=True, key='ad42a1cee565925e2b5065efe7e76c329b954a29')
         
-        if args.algo_name == "Updet-bc":
-            algorithm_name = args.algo_name
-        else:
-            algorithm_name = args.algo_name
-        if args.hier_history:
-            detail = "HierHistory"
-            detail += "_" + str(args.high_step)
-        elif args.no_history:
-            detail = "NoHistory"
-        elif args.gru_history:
-            detail = "GRUHistory"
-        else:
-            detail = "BasicHistory"
-        detail += "_depth_" + str(args.depth)
-        wandb.init(project="0812-MTMA", group=args.task, name=algorithm_name + "_dropout_" + str(args.token_dropout) + "_" + detail)
+        detail = "dropout_" + str(args.token_dropout) + "_depth_" + str(args.depth) + "_HF_" + str(args.high_step)
+
+        wandb.init(project="STAM", 
+                   group=args.task, 
+                   config=_config,
+                   name=args.algo_name + "_" + detail)
 
     # set model save dir
     args.save_dir = os.path.join(results_save_dir, 'models', "seed_" + str(args.seed))

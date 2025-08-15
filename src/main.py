@@ -234,7 +234,7 @@ if __name__ == "__main__":
     
     results_save_dir = os.path.join(
         results_save_dir1,
-        "dropout_" + str(config_dict["token_dropout"]) + "_depth_" + str(config_dict["depth"]),
+        "dropout_" + str(config_dict["token_dropout"]) + "_depth_" + str(config_dict["depth"]) + "_HF_" + str(config_dict["high_step"]),
         detail
     )
     
