@@ -177,7 +177,7 @@ if __name__ == "__main__":
 
     # with open(
     #     os.path.join(
-    #         os.path.dirname(__file__), "config/tasks", "marine-hard-medium.yaml"
+    #         os.path.dirname(__file__), "config/tasks", "marine-attention.yaml"
     #     ),
     #     "r",
     # ) as f:
@@ -234,7 +234,7 @@ if __name__ == "__main__":
     
     results_save_dir = os.path.join(
         results_save_dir1,
-        "dropout_" + str(config_dict["token_dropout"]),
+        "dropout_" + str(config_dict["token_dropout"]) + "_depth_" + str(config_dict["depth"]),
         detail
     )
     

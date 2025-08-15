@@ -106,7 +106,10 @@ class HierReasoningAgent(nn.Module):
         total_hidden = th.cat([own_hidden, enemy_hidden, ally_hidden, history_hidden, high_hidden.view(-1, 1, self.entity_embed_dim)], dim=1)
         
         if getattr(self.args, "attention_heatmap", False):
-            
+            if t % self.args.high_step == 0:
+                high_hidden = self.rnn(history_hidden.view(-1, self.entity_embed_dim), high_hidden_state)
+            else:
+                high_hidden = high_hidden_state
             hb, ht, hd = total_hidden.size()
             token_mask = th.ones(hb, ht, ht, device=own_obs.device)
             if self.args.no_history:
@@ -116,8 +119,9 @@ class HierReasoningAgent(nn.Module):
                 token_mask = None
             heatmap = self.transformer.attention_heatmap(total_hidden, token_mask)
             outputs = self.transformer(total_hidden, token_mask)
-            h = outputs[:, -1:, :]
-            return heatmap, h
+
+            h_low = outputs[:, -2, :]
+            return heatmap[1], h_low, high_hidden
         
 
         if token_dropout != 0:

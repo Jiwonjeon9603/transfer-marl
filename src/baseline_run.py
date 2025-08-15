@@ -65,6 +65,7 @@ def run(_run, _config, _log):
             detail = "GRUHistory"
         else:
             detail = "BasicHistory"
+        detail += "_depth_" + str(args.depth)
         wandb.init(project="0812-MTMA", group=args.task, name=algorithm_name + "_dropout_" + str(args.token_dropout) + "_" + detail)
 
     # set model save dir
@@ -203,9 +204,9 @@ def draw_attention_heatmap(attention, task, num_steps_to_plot, batch_idx, first_
     plt.tight_layout(rect=[0, 0, 0.9, 0.95])
 
     # 저장
-    save_dir = os.path.join(os.getcwd(), "attention_drop0.1_NoHistory")
+    save_dir = os.path.join(os.getcwd(), "attention_depth2_HR5")
     os.makedirs(save_dir, exist_ok=True)
-    filename = f"{task}_batch_{batch_idx}_grid.png"
+    filename = f"{task}_batch_{batch_idx}_grid_1th.png"
     save_path = os.path.join(save_dir, filename)
     plt.savefig(save_path, dpi=300)
     plt.close()
@@ -299,9 +300,9 @@ def draw_mean_attention_heatmap(attention, task, num_steps_to_plot, batch_idx, f
     plt.tight_layout(rect=[0, 0, 0.9, 0.95])  # ✅ 여유 공간 확보
 
     # 저장
-    save_dir = os.path.join(os.getcwd(), "attention_mean_drop0.1_NoHistory")
+    save_dir = os.path.join(os.getcwd(), "attention_mean_depth2_HR5")
     os.makedirs(save_dir, exist_ok=True)
-    filename = f"{task}_batch_{batch_idx}_grid.png"
+    filename = f"{task}_batch_{batch_idx}_grid_1th.png"
     save_path = os.path.join(save_dir, filename)
     plt.savefig(save_path, dpi=300)
     plt.close()

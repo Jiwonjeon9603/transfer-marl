@@ -143,7 +143,7 @@ class Transformer(nn.Module):
                 TransformerBlock(emb=emb, heads=heads, mask=False))
 
         self.tblocks = nn.Sequential(*tblocks)
-
+        self.depth = depth
         self.toprobs = nn.Linear(emb, output_dim)
 
     def forward(self, tokens, mask):
@@ -160,7 +160,9 @@ class Transformer(nn.Module):
         return x  # , tokens
     
     def attention_heatmap(self, tokens, mask):
-        attn = self.tblocks[0].attention.attn_map(tokens, mask)
+        attn = []
+        for i in range(self.depth):
+            attn.append(self.tblocks[i].attention.attn_map(tokens, mask))
         return attn
 
 def mask_(matrices, maskval=0.0, mask_diagonal=True):
