@@ -48,7 +48,7 @@ pretrain: True
 type_conservative: "norm"
 
 head: 1
-depth: 1
+depth: 2
 
 token_dropout: 0.1
 
@@ -62,5 +62,6 @@ heatmap_num_plots: 10
 gru_history: False
 no_history: False
 hier_history: False
+high_step: 0
 
 algo_name: "Updet-bc"
