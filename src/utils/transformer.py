@@ -339,6 +339,65 @@ class HRM(nn.Module):
         return attn
 
 
+class HRMGrad(nn.Module):
+
+    def __init__(self, emb, heads, depth, output_dim, h_cycles=2, l_cycles=2):
+        super().__init__()
+
+        self.num_tokens = output_dim
+        self.L_level = HRMTransformerBlock(emb, heads, depth, output_dim)
+        self.H_level = HRMTransformerBlock(emb, heads, depth, output_dim)
+        self.H_cycles = h_cycles
+        self.L_cycles = l_cycles
+
+        self.toprobs = nn.Linear(emb, output_dim)
+        # self.token_embedding = nn.Linear(input_dim, emb)
+
+    def forward(self, tokens, mask):
+
+        # tokens = self.token_embedding(x)
+        # tokens = torch.cat((x, h), 1)
+        b, t, e = tokens.size()
+
+        z_H = torch.zeros_like(tokens)
+        z_L = torch.zeros_like(tokens)
+        # z_H = trunc_normal_init_(
+        #     torch.empty((b, t, e), dtype=tokens.dtype, device=device), std=1
+        # )
+        # z_L = trunc_normal_init_(
+        #     torch.empty((b, t, e), dtype=tokens.dtype, device=device), std=1
+        # )
+        for itr_step in range(1, self.H_cycles * self.L_cycles):
+            z_L = self.L_level(z_L + z_H + tokens, mask)
+            if itr_step % self.H_cycles == 0:
+                z_H = self.H_level(z_H + z_L, mask)
+
+        # for _H_step in range(self.H_cycles):
+        #     for _L_step in range(self.L_cycles):
+        #         if not (
+        #             (_H_step == self.H_cycles - 1)
+        #             and (_L_step == self.L_cycles - 1)
+        #         ):
+        #             z_L = self.L_level(z_L, z_H + input_embeddings, **seq_info)
+
+        #     if not (_H_step == self.config.H_cycles - 1):
+        #         z_H = self.H_level(z_H, z_L, **seq_info)
+
+        # assert not z_H.requires_grad and not z_L.requires_grad
+
+        # 1-step grad
+        z_L = self.L_level(z_L + z_H + tokens, mask)
+        z_H = self.H_level(z_H + z_L, mask)
+
+        x = self.toprobs(z_H.view(b * t, e)).view(b, t, self.num_tokens)
+
+        return x  # , tokens
+
+    def attention_heatmap(self, tokens, mask):
+        attn = self.tblocks[0].attention.attn_map(tokens, mask)
+        return attn
+
+
 class HierHiddenTransformer(nn.Module):
 
     def __init__(self, emb, heads, depth, output_dim, high_freq):

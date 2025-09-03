@@ -317,7 +317,7 @@ def train_sequential(
                     **{
                         f"{k}": v[-1][1]
                         for k, v in logger.stats.items()
-                        if len(v) == max_log_len
+                        # if len(v) == max_log_len
                     },
                 }
             )
