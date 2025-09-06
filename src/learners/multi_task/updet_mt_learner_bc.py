@@ -99,6 +99,9 @@ class UPDeTMTBCLearner:
         self.optimiser.zero_grad()
 
     def update(self):
+        grad_norm = th.nn.utils.clip_grad_norm_(
+            self.params, self.main_args.grad_norm_clip
+        )
         self.optimiser.step()
         self.optimiser.zero_grad()
 
@@ -253,9 +256,9 @@ class UPDeTMTBCLearner:
         # Do RL Learning
         # self.optimiser.zero_grad()
         loss.backward()
-        grad_norm = th.nn.utils.clip_grad_norm_(
-            self.params, self.main_args.grad_norm_clip
-        )
+        # grad_norm = th.nn.utils.clip_grad_norm_(
+        #     self.params, self.main_args.grad_norm_clip
+        # )
         # self.optimiser.step()
         # get scalar for tensorboard logging
         try:
