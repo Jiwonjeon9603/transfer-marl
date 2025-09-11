@@ -70,7 +70,7 @@ def run(_run, _config, _log):
 
     wandb_name = f"agent={args.name}-mac={args.mac}-learner={args.learner}-mixer={args.mixer}-hier={detail}"
     _config["job"] = _config["name"]
-    # _config = {k: str(v) for k, v in _config.items()}
+    _config = {k: str(v) for k, v in _config.items()}
     wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880")
     wandb.init(
         project="OffMTMARL",
