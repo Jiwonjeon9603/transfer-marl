@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import pdb
 
 from utils.embed import polynomial_embed, binary_embed
-from utils.transformer import TSFFNTransformer
+from utils.transformer import TSFFNTransformer, TSFFNInputTransformer
 
 
 class TSFFNAgent(nn.Module):
@@ -48,13 +48,22 @@ class TSFFNAgent(nn.Module):
         self.own_value = nn.Linear(wrapped_obs_own_dim, self.entity_embed_dim)
         # self.skill_value = nn.Linear(self.skill_dim, self.entity_embed_dim)
 
-        self.transformer = TSFFNTransformer(
-            self.entity_embed_dim,
-            args.head,
-            args.depth,
-            self.entity_embed_dim,
-            args.n_hist_tokens,
-        )
+        if getattr(self.args, "putting_inputs", False):
+            self.transformer = TSFFNInputTransformer(
+                self.entity_embed_dim,
+                args.head,
+                args.depth,
+                self.entity_embed_dim,
+                args.n_hist_tokens,
+            )
+        else:
+            self.transformer = TSFFNTransformer(
+                self.entity_embed_dim,
+                args.head,
+                args.depth,
+                self.entity_embed_dim,
+                args.n_hist_tokens,
+            )
 
         self.q_skill = nn.Linear(self.entity_embed_dim, n_actions_no_attack)
 

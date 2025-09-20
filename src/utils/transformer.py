@@ -533,6 +533,41 @@ class TSFFNTransformer(nn.Module):
         attn = self.tblocks[0].attention.attn_map(tokens, mask)
         return attn
 
+class TSFFNInputTransformer(nn.Module):
+    def __init__(self, emb, heads, depth, output_dim, n_hist_tokens):
+        super().__init__()
+        self.num_tokens = output_dim
+
+        # 여러 transformer block을 ModuleList에 저장
+        self.tblocks = nn.ModuleList([
+            TSFFNTransformerBlock(
+                emb=emb, heads=heads, mask=False, n_hist_tokens=n_hist_tokens
+            )
+            for _ in range(depth)
+        ])
+
+        self.toprobs = nn.Linear(emb, output_dim)
+
+    def forward(self, tokens, mask):
+        b, t, e = tokens.size()
+
+        # z_0 초기화
+        with torch.no_grad():
+            z = torch.zeros_like(tokens)
+
+        # 각 block마다 tokens + z를 입력으로 넣고 z 갱신
+        for block in self.tblocks:
+            z = block(tokens + z, mask)
+
+        # 최종 출력 projection
+        out = self.toprobs(z.view(b * t, e)).view(b, t, self.num_tokens)
+
+        return out
+
+    def attention_heatmap(self, tokens, mask):
+        attn = self.tblocks[0].attention.attn_map(tokens, mask)
+        return attn
+
 
 def mask_(matrices, maskval=0.0, mask_diagonal=True):
 
@@ -571,3 +606,6 @@ def trunc_normal_init_(
             tensor.clip_(lower * comp_std, upper * comp_std)
 
     return tensor
+
+
+

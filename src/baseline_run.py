@@ -74,7 +74,7 @@ def run(_run, _config, _log):
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
     # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
     wandb.init(
-        project="model-OffMTMARL",
+        project="testmodel-OffMTMARL",
         group=_config["task"],
         name=wandb_name,
         config=_config,
