@@ -551,13 +551,12 @@ class TSFFNInputTransformer(nn.Module):
     def forward(self, tokens, mask):
         b, t, e = tokens.size()
 
-        # z_0 초기화
-        with torch.no_grad():
-            z = torch.zeros_like(tokens)
+
+        z = torch.zeros_like(tokens)
 
         # 각 block마다 tokens + z를 입력으로 넣고 z 갱신
         for block in self.tblocks:
-            z = block(tokens + z, mask)
+            z, mask = block((tokens + z, mask))
 
         # 최종 출력 projection
         out = self.toprobs(z.view(b * t, e)).view(b, t, self.num_tokens)
