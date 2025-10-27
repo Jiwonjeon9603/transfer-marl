@@ -58,9 +58,6 @@ attention_heatmap: False
 heatmap_batch_indices: [0]
 heatmap_num_plots: 10
 
-gru_history: False
-no_history: False
-hier_history: False
 
 
 algo_name: "Curriculum-bc"
