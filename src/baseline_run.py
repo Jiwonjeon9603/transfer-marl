@@ -58,23 +58,13 @@ def run(_run, _config, _log):
     # sacred is on by default
     logger.setup_sacred(_run)
 
-    if args.hier_history:
-        detail = "HierHistory"
-        detail += "_" + str(args.high_step)
-    elif args.no_history:
-        detail = "NoHistory"
-    elif args.gru_history:
-        detail = "GRUHistory"
-    else:
-        detail = "BasicHistory"
-
-    wandb_name = f"agent={args.name}-mac={args.mac}-learner={args.learner}-mixer={args.mixer}-hier={detail}"
+    wandb_name = f"agent={args.name}-mac={args.mac}-learner={args.learner}-mixer={args.mixer}"
     _config["job"] = _config["name"]
     # _config = {k: str(v) for k, v in _config.items()}
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
     # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
     wandb.init(
-        project="OffMTMARL",
+        project="Proposal-MTMA-21",
         group=_config["task"],
         name=wandb_name,
         config=_config,
@@ -478,13 +468,12 @@ def train_sequential(
     task2runner,
     task2offlinedata,
     t_start=0,
-    pretrain=False,
     test_task2offlinedata=None,
 ):
     ########## start training ##########
     t_env = t_start
     episode = 0  # episode does not matter
-    t_max = main_args.t_max if not pretrain else main_args.pretrain_steps
+    t_max = main_args.t_max
     model_save_time = 0
     last_test_T = 0
     last_log_T = 0
@@ -503,177 +492,90 @@ def train_sequential(
     test_time_total += time.time() - test_start_time
     update_fn = getattr(learner, "update", None)
 
-    while t_env < t_max:
-        # shuffle tasks
-        np.random.shuffle(train_tasks)
+    cur_t = t_start
+    print("Training tasks", train_tasks)
+    for task in train_tasks:
+        print("**************************************", task)
+        while cur_t < t_max/3:
         # train each task
-        for task in train_tasks:
-            if getattr(main_args, "attention_heatmap", False):
-                episode_sample = task2offlinedata[task].fix_sample(batch_size_train)
-            else:
-                episode_sample = task2offlinedata[task].sample(batch_size_train)
-
+            episode_sample = task2offlinedata[task].sample(batch_size_train)
             if episode_sample.device != task2args[task].device:
                 episode_sample.to(task2args[task].device)
-
-            if getattr(main_args, "attention_heatmap", False):
-                attention, end_indices, first_zero_idx = learner.attention(
-                    episode_sample, t_env, episode, task
+            
+            if callable(update_fn):
+                terminated = learner.train(
+                    episode_sample, t_env / len(train_tasks), episode, task
                 )
-                # batch_idx = main_args.heatmap_batch_idx
-                if "HRM" in main_args.name:
-                    for batch_idx in main_args.heatmap_batch_indices:
-                        for k in range(len(attention)):
-                            one_attention = attention[k][
-                                batch_idx, : end_indices[batch_idx].item()
-                            ].detach()
-                            first_dead = first_zero_idx[batch_idx]
-                            draw_attention_heatmap(
-                                attention=one_attention,
-                                task=task,
-                                num_steps_to_plot=main_args.heatmap_num_plots,
-                                batch_idx=batch_idx,
-                                first_dead=first_dead,
-                                main_args=main_args,
-                                layer=k,
-                            )
-                            draw_mean_attention_heatmap(
-                                attention=one_attention,
-                                task=task,
-                                num_steps_to_plot=1,
-                                batch_idx=batch_idx,
-                                first_dead=first_dead,
-                                main_args=main_args,
-                                layer=k,
-                            )
-
-                else:
-                    for batch_idx in main_args.heatmap_batch_indices:
-                        one_attention = attention[
-                            batch_idx, : end_indices[batch_idx].item()
-                        ].detach()
-                        first_dead = first_zero_idx[batch_idx]
-                        draw_attention_heatmap(
-                            attention=one_attention,
-                            task=task,
-                            num_steps_to_plot=main_args.heatmap_num_plots,
-                            batch_idx=batch_idx,
-                            first_dead=first_dead,
-                            main_args=main_args,
-                            layer=0,
-                        )
-                        draw_mean_attention_heatmap(
-                            attention=one_attention,
-                            task=task,
-                            num_steps_to_plot=1,
-                            batch_idx=batch_idx,
-                            first_dead=first_dead,
-                            main_args=main_args,
-                            layer=0,
-                        )
-                continue
-
-            if pretrain:
-                if hasattr(learner, "pretrain"):
-                    terminated = learner.pretrain(episode_sample, t_env, episode, task)
-                else:
-                    raise ValueError(
-                        "Do pretraining with a learner that does not have a `pretrain` method!"
-                    )
             else:
-                if callable(update_fn):
-                    terminated = learner.train(
-                        episode_sample, t_env / len(train_tasks), episode, task
-                    )
-                else:
-                    terminated = learner.train(episode_sample, t_env, episode, task)
+                terminated = learner.train(episode_sample, t_env, episode, task)
 
             if terminated is not None and terminated:
                 break
 
             episode += batch_size_run
+            t_env += 1
+            cur_t += 1
 
-        t_env += len(train_tasks)
-        if getattr(main_args, "attention_heatmap", False):
-            exit()
+            if callable(update_fn):
+                update_fn()
 
-        if callable(update_fn):
-            update_fn()
-
-        if terminated is not None and terminated:
-            logger.console_logger.info(
-                f"Terminate training by the learner at t_env = {t_env}. Finish training."
-            )
-            break
-
-        # Execute test runs once in a while & final evaluation
-        if (t_env - last_test_T) / main_args.test_interval >= 1 or t_env >= t_max:
-            test_start_time = time.time()
-
-            with th.no_grad():
-                for task in main_args.test_tasks:
-                    task2runner[task].t_env = t_env
-                    for _ in range(n_test_runs):
-                        task2runner[task].run(test_mode=True, pretrain=pretrain)
-
-                # test_pretrain for pretrained tasks
-                if pretrain and test_task2offlinedata is not None:
-                    for task, data_buffer in test_task2offlinedata.items():
-                        episode_sample = data_buffer.sample(batch_size_train * 10)
-
-                        if episode_sample.device != task2args[task].device:
-                            episode_sample.to(task2args[task].device)
-
-                        if hasattr(learner, "test_pretrain"):
-                            learner.test_pretrain(episode_sample, t_env, episode, task)
-                        else:
-                            raise ValueError(
-                                "Do test_pretrain with a learner that does not have a `test_pretrain` method!"
-                            )
-
-            test_time_total += time.time() - test_start_time
-
-            logger.console_logger.info("Step: {} / {}".format(t_env, t_max))
-            logger.console_logger.info(
-                "Estimated time left: {}. Time passed: {}. Test time cost: {}".format(
-                    time_left(last_time, last_test_T, t_env, t_max),
-                    time_str(time.time() - start_time),
-                    time_str(test_time_total),
+            if terminated is not None and terminated:
+                logger.console_logger.info(
+                    f"Terminate training by the learner at t_env = {t_env}. Finish training."
                 )
-            )
-            last_time = time.time()
-            last_test_T = t_env
+                break
 
-        if main_args.save_model and (
-            t_env - model_save_time >= main_args.save_model_interval
-            or model_save_time == 0
-        ):
-            if pretrain:
-                save_path = os.path.join(main_args.pretrain_save_dir, str(t_env))
-            else:
+            # Execute test runs once in a while & final evaluation
+            if (t_env - last_test_T) / main_args.test_interval >= 1 or t_env >= t_max:
+                test_start_time = time.time()
+
+                with th.no_grad():
+                    for test_task in main_args.test_tasks:
+                        task2runner[test_task].t_env = t_env
+                        for _ in range(n_test_runs):
+                            task2runner[test_task].run(test_mode=True)
+
+                test_time_total += time.time() - test_start_time
+
+                logger.console_logger.info("Step: {} / {}".format(t_env, t_max))
+                logger.console_logger.info(
+                    "Estimated time left: {}. Time passed: {}. Test time cost: {}".format(
+                        time_left(last_time, last_test_T, t_env, t_max),
+                        time_str(time.time() - start_time),
+                        time_str(test_time_total),
+                    )
+                )
+                last_time = time.time()
+                last_test_T = t_env
+
+            if main_args.save_model and (
+                t_env - model_save_time >= main_args.save_model_interval
+                or model_save_time == 0
+            ):
                 save_path = os.path.join(main_args.save_dir, str(t_env))
-            os.makedirs(save_path, exist_ok=True)
-            logger.console_logger.info("Saving models to {}".format(save_path))
-            learner.save_models(save_path)
-            model_save_time = t_env
+                os.makedirs(save_path, exist_ok=True)
+                logger.console_logger.info("Saving models to {}".format(save_path))
+                learner.save_models(save_path)
+                model_save_time = t_env
 
-        if (t_env - last_log_T) >= main_args.log_interval:
-            last_log_T = t_env
-            logger.log_stat("episode", episode, t_env)
-            logger.print_recent_stats()
-            max_log_len = max([len(v) for k, v in logger.stats.items()])
+            if (t_env - last_log_T) >= main_args.log_interval:
+                last_log_T = t_env
+                logger.log_stat("episode", episode, t_env)
+                logger.print_recent_stats()
+                max_log_len = max([len(v) for k, v in logger.stats.items()])
 
-            wandb.log(
-                {
-                    "time step": t_env / (len(train_tasks)),
-                    **{
-                        f"{k}": v[-1][1]
-                        for k, v in logger.stats.items()
-                        if len(v) == max_log_len
-                    },
-                }
-            )
+                wandb.log(
+                    {
+                        "time step": t_env,
+                        **{
+                            f"{k}": v[-1][1]
+                            for k, v in logger.stats.items()
+                            if len(v) == max_log_len
+                        },
+                    }
+                )
 
+        cur_t = 0
 
 def run_sequential(args, logger):
     # Init runner so we can get env info
@@ -681,10 +583,7 @@ def run_sequential(args, logger):
     # define main_args
     main_args = copy.deepcopy(args)
 
-    if getattr(main_args, "pretrain", False):
-        all_tasks = list(set(args.train_tasks + args.test_tasks + args.pretrain_tasks))
-    else:
-        all_tasks = list(set(args.train_tasks + args.test_tasks))
+    all_tasks = list(set(args.train_tasks + args.test_tasks))
 
     task2args, task2runner, task2buffer, task2scheme, task2groups, task2preprocess = (
         init_tasks(all_tasks, main_args, logger)
@@ -770,69 +669,7 @@ def run_sequential(args, logger):
             )
             return
 
-    if getattr(main_args, "pretrain", False):
-        # initialize training data for each task
-        task2offlinedata = {}
-        for task in main_args.pretrain_tasks:
-            # create offline data buffer
-
-            task2offlinedata[task] = OfflineBuffer(
-                task,
-                main_args.pretrain_tasks_data_quality[task],
-                data_folder=main_args.offline_data_name,
-                offline_data_size=args.offline_data_size,
-                random_sample=args.offline_data_shuffle,
-            )
-
-        test_task2offlinedata = None
-        # add test data if learner has `test_pretrain` function
-        if hasattr(learner, "test_pretrain") and hasattr(
-            main_args, "test_tasks_data_quality"
-        ):
-            test_task2offlinedata = {}
-            for task in main_args.test_tasks_data_quality.keys():
-                test_task2offlinedata[task] = OfflineBuffer(
-                    task,
-                    main_args.test_tasks_data_quality[task],
-                    data_folder=main_args.offline_data_name,
-                    offline_data_size=args.offline_data_size,
-                    random_sample=args.offline_data_shuffle,
-                )
-
-        logger.console_logger.info(
-            "Beginning pre-training with {} timesteps for each task".format(
-                main_args.pretrain_steps
-            )
-        )
-        train_sequential(
-            main_args.pretrain_tasks,
-            main_args,
-            logger,
-            learner,
-            task2args,
-            task2runner,
-            task2offlinedata,
-            pretrain=True,
-            test_task2offlinedata=test_task2offlinedata,
-        )
-        logger.console_logger.info(f"Finished pretraining")
-        test_task2offlinedata = None  # free memory
-
-        save_path = os.path.join(
-            main_args.pretrain_save_dir, str(main_args.pretrain_steps)
-        )
-        os.makedirs(save_path, exist_ok=True)
-        logger.console_logger.info("Saving models to {}".format(save_path))
-        learner.save_models(save_path)
-
-    elif hasattr(main_args, "pretrain"):
-        # load models from pretrained model directory
-        load_path = os.path.join(
-            main_args.pretrain_save_dir, str(main_args.pretrain_steps)
-        )
-        learner.load_models(load_path)
-        logger.console_logger.info("Load pretrained models from {}".format(load_path))
-
+    
     # initialize training data for each task
     task2offlinedata = {}
     for task in main_args.train_tasks:

@@ -155,7 +155,6 @@ if __name__ == "__main__":
 
     task_config = _get_config(params, "--task-config", "tasks")
     config_dict = recursive_dict_update(config_dict, task_config)
-
     config_dict = recursive_dict_update(config_dict, _get_argv_config(params))
 
     ########### For debugging ##################
@@ -168,7 +167,7 @@ if __name__ == "__main__":
     #         assert False, "default.yaml error: {}".format(exc)
 
     # with open(
-    #     os.path.join(os.path.dirname(__file__), "config/algs", "updet-tsffn-inputs.yaml"), "r"
+    #     os.path.join(os.path.dirname(__file__), "config/algs", "curriculum-bc.yaml"), "r"
     # ) as f:
     #     try:
     #         alg_config = yaml.full_load(f)
@@ -177,7 +176,7 @@ if __name__ == "__main__":
 
     # with open(
     #     os.path.join(
-    #         os.path.dirname(__file__), "config/tasks", "marine-attention.yaml"
+    #         os.path.dirname(__file__), "config/tasks", "marine-hard-medium.yaml"
     #     ),
     #     "r",
     # ) as f:
@@ -218,26 +217,10 @@ if __name__ == "__main__":
         # unique_token,
     )
 
-    if config_dict.get("no_history", False):
-        detail = "NoHistory"
-    elif config_dict.get("gru_history", False):
-        detail = "GRUHistory"
-    elif config_dict.get("hier_history", False):
-        detail = "HierHistory"
-        detail += str(config_dict["high_step"])
-        if config_dict.get("high_hidden_dropout", False):
-            detail += "_HighDrop"
-        else:
-            detail += "_NoHighDrop"
-    else:
-        detail = "BasicHistory"
-    if config_dict["save_model"]:
-        detail += "/Models"
     
     results_save_dir = os.path.join(
         results_save_dir1,
-        "dropout_" + str(config_dict["token_dropout"]),
-        detail
+        "dropout_" + str(config_dict["token_dropout"])
     )
     
     os.makedirs(results_save_dir, exist_ok=True)

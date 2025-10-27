@@ -16,20 +16,20 @@ target_update_interval: 80
 
 # use the Q_Learner to train
 agent_output_type: "q"
-learner: "updet_bc_learner"
+learner: "updet_learner"
 double_q: True
 mixer: "mt_qattn"
 mixing_embed_dim: 32
 hypernet_layers: 2
 hypernet_embed: 64
 
-name: "HRM_ST_Wo_H"
+name: "updet-bc"
 
 # agent type
-agent: "mt_hrm_hst_wo_h"
+agent: "mt_updet"
 
 # mac
-mac: "mt_hr_mac"
+mac: "mt_updet_mac"
 
 # params about observation decomposition
 id_length: 4
@@ -48,10 +48,9 @@ pretrain: True
 type_conservative: "norm"
 
 head: 1
-depth: 1
+depth: 2
 
 token_dropout: 0.1
-high_hidden_dropout: True
 
 bc: True
 
@@ -59,13 +58,9 @@ attention_heatmap: False
 heatmap_batch_indices: [0]
 heatmap_num_plots: 10
 
-
 gru_history: False
 no_history: False
-hier_history: True
-high_step: 3
-high_freq: 2
+hier_history: False
 
-h_cycles: 3
 
-algo_name: "HRM_ST_Wo_H"
+algo_name: "Curriculum-bc"
