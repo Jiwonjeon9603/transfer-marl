@@ -142,16 +142,38 @@ class UPDeTLearner:
                 mac_out_for_target.append(target_inputs)
             mac_out_for_target = th.stack(mac_out_for_target, dim=1)
 
+        if getattr(self.main_args, "split_ds", False):
+            diff = rewards[:, 1:, :] - rewards[:, :-1, :]
+            if self.main_args.geq:
+                inc = (diff >= 0).float()
+            else:
+                inc = (diff > 0).float()
+            inc = th.cat([th.zeros(rewards.shape[0], 1, 1, device=rewards.device), inc], dim=1)
+
         if self.main_args.bc:
             b, t, n, a = mac_out.size()
-            bc_loss = (
-                F.cross_entropy(
-                    mac_out.reshape(-1, a),
-                    actions.squeeze(-1).reshape(-1),
-                    reduction="sum",
-                )
-                / mask.sum()
-            ) / n
+            if getattr(self.main_args, "split_ds", False):
+                inc = inc.unsqueeze(2).expand(b, t, n, 1).float()
+                inc_weight = self.main_args.split_alpha * inc + self.main_args.split_beta * (1 - inc)
+                
+                logits = mac_out.reshape(-1, a)
+                targets = actions.squeeze(-1).reshape(-1)
+                weights = (inc_weight * mask.unsqueeze(2).expand(b, t, n, 1)).reshape(-1)
+                
+                log_probs = F.log_softmax(logits, dim=-1)
+                losses = F.nll_loss(log_probs, targets, reduction="none")
+                weighted_bc_loss = losses * weights
+                bc_loss = weighted_bc_loss.sum() / (mask.sum() * n)
+            
+            else:   
+                bc_loss = (
+                    F.cross_entropy(
+                        mac_out.reshape(-1, a),
+                        actions.squeeze(-1).reshape(-1),
+                        reduction="sum",
+                    )
+                    / mask.sum()
+                ) / n
 
         # Pick the Q-Values for the actions taken by each agent
         chosen_action_qvals = th.gather(

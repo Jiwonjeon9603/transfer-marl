@@ -53,6 +53,10 @@ depth: 2
 token_dropout: 0.1
 
 bc: True
+split_ds: True
+geq: True
+split_alpha: 1
+split_beta: 0.5
 
 attention_heatmap: False
 heatmap_batch_indices: [0]
