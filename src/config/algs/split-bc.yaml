@@ -54,7 +54,7 @@ token_dropout: 0.1
 
 bc: True
 split_ds: True
-geq: True
+geq: False
 split_alpha: 1
 split_beta: 0.5
 
@@ -64,4 +64,4 @@ heatmap_num_plots: 10
 
 
 
-algo_name: "Curriculum-bc"
+algo_name: "Split-bc"

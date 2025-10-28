@@ -58,13 +58,13 @@ def run(_run, _config, _log):
     # sacred is on by default
     logger.setup_sacred(_run)
 
-    wandb_name = f"agent={args.name}-mac={args.mac}-learner={args.learner}-mixer={args.mixer}"
+    wandb_name = f"agent={args.algo_name}-geq={args.geq}-alpha={str(args.split_alpha)}-beta={str(args.split_beta)}"
     _config["job"] = _config["name"]
     # _config = {k: str(v) for k, v in _config.items()}
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
     # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
     wandb.init(
-        project="testProposal-MTMA-21",
+        project="Proposal-MTMA-21",
         group=_config["task"],
         name=wandb_name,
         config=_config,
@@ -492,11 +492,10 @@ def train_sequential(
     test_time_total += time.time() - test_start_time
     update_fn = getattr(learner, "update", None)
 
-    cur_t = t_start
-    print("Training tasks", train_tasks)
-    for task in train_tasks:
-        print("**************************************", task)
-        while cur_t < t_max/3:
+    while t_env < t_max: # while cur_t < t_max:
+        # shuffle tasks
+        np.random.shuffle(train_tasks)
+        for task in train_tasks:
         # train each task
             episode_sample = task2offlinedata[task].sample(batch_size_train)
             if episode_sample.device != task2args[task].device:
@@ -514,7 +513,7 @@ def train_sequential(
 
             episode += batch_size_run
             t_env += 1
-            cur_t += 1
+            # cur_t += 1
 
             if callable(update_fn):
                 update_fn()
@@ -575,7 +574,7 @@ def train_sequential(
                     }
                 )
 
-        cur_t = 0
+        # cur_t = 0
 
 def run_sequential(args, logger):
     # Init runner so we can get env info
