@@ -336,17 +336,20 @@ class UPDeTLearner:
                 mac_out_for_target.append(target_inputs)
             mac_out_for_target = th.stack(mac_out_for_target, dim=1)
 
+        sum_obs=th.sum(batch["obs"], dim=-1)
+        all_alive_mask = (sum_obs == 0).any(dim=2).float().unsqueeze(-1)
         
         if self.main_args.bc:
             b, t, n, a = mac_out.size()
-            bc_loss = (
-                F.cross_entropy(
-                    mac_out.reshape(-1, a),
-                    actions.squeeze(-1).reshape(-1),
-                    reduction="sum",
-                )
-                / mask.sum()
-            ) / n
+            bc_alive_mask = all_alive_mask.expand(-1, -1, n)
+            logits = mac_out.reshape(-1, a)
+            labels = actions.squeeze(-1).reshape(-1)
+            bc_mask_flat= bc_alive_mask.reshape(-1)
+
+            valid_idx = bc_mask_flat > 0
+            logits = logits[valid_idx]
+            labels = labels[valid_idx]
+            bc_loss = (F.cross_entropy(logits, labels, reduction="sum",) / mask.sum()) / n
 
         # Pick the Q-Values for the actions taken by each agent
         chosen_action_qvals = th.gather(
@@ -419,8 +422,6 @@ class UPDeTLearner:
         mask = mask[:, :].expand_as(cons_error)
 
         ######## Masking with original number of agents ############
-        sum_obs=th.sum(batch["obs"], dim=-1)
-        all_alive_mask = (sum_obs == 0).any(dim=2).float().unsqueeze(-1)
         tot_mask = mask * all_alive_mask
 
         # 0-out the targets that came from padded data

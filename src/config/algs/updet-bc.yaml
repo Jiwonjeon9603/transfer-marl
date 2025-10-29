@@ -58,6 +58,6 @@ attention_heatmap: False
 heatmap_batch_indices: [0]
 heatmap_num_plots: 10
 
-
+split_ds: False
 
 algo_name: "Updet-bc"

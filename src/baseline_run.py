@@ -57,7 +57,7 @@ def run(_run, _config, _log):
 
     # sacred is on by default
     logger.setup_sacred(_run)
-    if args.split_bc:
+    if getattr(args, "split_bc", False):
         wandb_name = f"agent={args.algo_name}-geq={args.geq}-alpha={str(args.split_alpha)}-beta={str(args.split_beta)}"
     else:
         wandb_name = f"agent={args.algo_name}"
@@ -502,7 +502,7 @@ def train_sequential(
             episode_sample = task2offlinedata[task].sample(batch_size_train)
             if episode_sample.device != task2args[task].device:
                 episode_sample.to(task2args[task].device)
-            
+
             if callable(update_fn):
                 if main_args.split_ds:
                     terminated = learner.train_double(
