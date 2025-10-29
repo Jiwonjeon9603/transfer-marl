@@ -142,7 +142,7 @@ class UPDeTLearner:
                 mac_out_for_target.append(target_inputs)
             mac_out_for_target = th.stack(mac_out_for_target, dim=1)
 
-        if getattr(self.main_args, "split_ds", False):
+        if getattr(self.main_args, "split_bc", False):
             diff = rewards[:, 1:, :] - rewards[:, :-1, :]
             if self.main_args.geq:
                 inc = (diff >= 0).float()
@@ -152,7 +152,7 @@ class UPDeTLearner:
 
         if self.main_args.bc:
             b, t, n, a = mac_out.size()
-            if getattr(self.main_args, "split_ds", False):
+            if getattr(self.main_args, "split_bc", False):
                 inc = inc.unsqueeze(2).expand(b, t, n, 1).float()
                 inc_weight = self.main_args.split_alpha * inc + self.main_args.split_beta * (1 - inc)
                 
@@ -306,6 +306,185 @@ class UPDeTLearner:
                 t_env,
             )
             self.task2train_info[task]["log_stats_t"] = t_env
+    
+    def train_policy2(
+        self, batch: EpisodeBatch, t_env: int, episode_num: int, task: str
+    ):
+        # Get the relevant quantities
+        rewards = batch["reward"][:, :]
+        actions = batch["actions"][:, :]
+        terminated = batch["terminated"][:, :].float()
+        mask = batch["filled"][:, :].float()
+        mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
+        avail_actions = batch["avail_actions"]
+
+        mac_out = []
+
+        self.mac.init_hidden(batch.batch_size, task)
+        for t in range(batch.max_seq_length):
+            agent_outs = self.mac.forward(
+                batch, t=t, task=task, token_dropout=self.main_args.token_dropout
+            )
+            mac_out.append(agent_outs)
+        mac_out = th.stack(mac_out, dim=1)  # Concat over time
+
+        with th.no_grad():
+            mac_out_for_target = []
+            self.mac.init_hidden(batch.batch_size, task)
+            for t in range(batch.max_seq_length):
+                target_inputs = self.mac.forward(batch, t=t, task=task, token_dropout=0)
+                mac_out_for_target.append(target_inputs)
+            mac_out_for_target = th.stack(mac_out_for_target, dim=1)
+
+        
+        if self.main_args.bc:
+            b, t, n, a = mac_out.size()
+            bc_loss = (
+                F.cross_entropy(
+                    mac_out.reshape(-1, a),
+                    actions.squeeze(-1).reshape(-1),
+                    reduction="sum",
+                )
+                / mask.sum()
+            ) / n
+
+        # Pick the Q-Values for the actions taken by each agent
+        chosen_action_qvals = th.gather(
+            mac_out[:, :], dim=3, index=actions[:, :]
+        ).squeeze(
+            3
+        )  # Remove the last dim
+
+        # Calculate the Q-Values necessary for the target
+        target_mac_out = []
+        self.target_mac.init_hidden(batch.batch_size, task)
+        for t in range(batch.max_seq_length):
+            target_agent_outs = self.target_mac.forward(
+                batch, t=t, task=task, token_dropout=0
+            )
+            target_mac_out.append(target_agent_outs)
+
+        # We don't need the first timesteps Q-Value estimate for calculating targets
+        target_mac_out = th.stack(target_mac_out, dim=1)  # Concat across time
+
+        # Mask out unavailable actions
+        target_mac_out[avail_actions[:, :] == 0] = -9999999
+
+        # Max over target Q-Values
+        if self.main_args.double_q:
+            # Get actions that maximise live Q (for double q-learning)
+            # mac_out_detach = mac_out.clone().detach()
+            # mac_out_detach[avail_actions == 0] = -9999999
+            # cur_max_actions = mac_out_detach[:, :].max(dim=3, keepdim=True)[1]
+
+            mac_out_for_target_detach = mac_out_for_target.clone().detach()
+            mac_out_for_target_detach[avail_actions == 0] = -9999999
+            cur_max_actions = mac_out_for_target_detach[:, :].max(dim=3, keepdim=True)[
+                1
+            ]
+            target_max_qvals = th.gather(target_mac_out, 3, cur_max_actions).squeeze(3)
+
+            cons_max_qvals = th.gather(mac_out, 3, cur_max_actions).squeeze(3)
+        else:
+            target_max_qvals = target_mac_out.max(dim=3)[0]
+
+        # Mix
+        bs, seq_len = chosen_action_qvals.size(0), chosen_action_qvals.size(1)
+        if self.mixer is not None:
+            chosen_action_qvals = self.mixer(
+                chosen_action_qvals, batch["state"][:, :], self.task2decomposer[task]
+            )
+            target_max_qvals = self.target_mixer(
+                target_max_qvals, batch["state"][:, :], self.task2decomposer[task]
+            )
+
+            cons_max_qvals = self.mixer(
+                cons_max_qvals, batch["state"][:, :], self.task2decomposer[task]
+            )
+
+        # Calculate c-step Q-Learning targets
+        targets = (
+            rewards[:, : -self.c]
+            + self.main_args.gamma
+            * (1 - terminated[:, self.c - 1 : -1])
+            * target_max_qvals[:, self.c :]
+        )
+
+        # Td-error
+        td_error = chosen_action_qvals[:, : -self.c] - targets.detach()
+
+        # Cons-error
+        cons_error = cons_max_qvals - chosen_action_qvals
+
+        mask = mask[:, :].expand_as(cons_error)
+
+        ######## Masking with original number of agents ############
+        sum_obs=th.sum(batch["obs"], dim=-1)
+        all_alive_mask = (sum_obs == 0).any(dim=2).float().unsqueeze(-1)
+        tot_mask = mask * all_alive_mask
+
+        # 0-out the targets that came from padded data
+        masked_td_error = td_error * tot_mask[:, : -self.c]
+        masked_cons_error = cons_error * tot_mask
+
+        # Normal L2 loss, take mean over actual data
+        td_loss = (masked_td_error**2).sum() / tot_mask[:, : -self.c].sum()
+        cons_loss = masked_cons_error.sum() / tot_mask.sum()
+
+        if self.main_args.bc:
+            loss = td_loss + bc_loss
+
+        else:
+            loss = td_loss + self.alpha * cons_loss
+
+        # Do RL Learning
+        self.optimiser.zero_grad()
+        loss.backward()
+        grad_norm = th.nn.utils.clip_grad_norm_(
+            self.params, self.main_args.grad_norm_clip
+        )
+        self.optimiser.step()
+        # get scalar for tensorboard logging
+        try:
+            grad_norm = grad_norm.item()
+        except:
+            pass
+
+        # episode_num should be pulic
+        if (
+            t_env - self.last_target_update_episode
+        ) / self.main_args.target_update_interval >= 1.0:
+            self._update_targets()
+            self.last_target_update_episode = t_env
+
+        if (
+            t_env - self.task2train_info[task]["log_stats_t"]
+            >= self.task2args[task].learner_log_interval
+        ):
+            self.logger.log_stat(f"{task}/split_loss", loss.item(), t_env)
+            self.logger.log_stat(f"{task}/split_td_loss", td_loss.item(), t_env)
+            self.logger.log_stat(f"{task}/split_bc_loss", bc_loss.item(), t_env)
+            self.logger.log_stat(f"{task}/split_grad_norm", grad_norm, t_env)
+            mask_elems = mask.sum().item()
+            self.logger.log_stat(
+                f"{task}/split_td_error_abs",
+                (masked_td_error.abs().sum().item() / mask_elems),
+                t_env,
+            )
+            self.logger.log_stat(
+                f"{task}/split_q_taken_mean",
+                (chosen_action_qvals * mask).sum().item()
+                / (mask_elems * self.task2args[task].n_agents),
+                t_env,
+            )
+            self.logger.log_stat(
+                f"{task}/split_target_mean",
+                (targets * mask[:, : -self.c]).sum().item()
+                / (mask_elems * self.task2args[task].n_agents),
+                t_env,
+            )
+            self.task2train_info[task]["log_stats_t"] = t_env
+
 
     def pretrain(self, batch: EpisodeBatch, t_env: int, episode_num: int, task: str):
         # self.train_vae(batch, t_env, episode_num, task)
@@ -313,6 +492,11 @@ class UPDeTLearner:
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int, task: str):
         self.train_policy(batch, t_env, episode_num, task)
+        self.current_steps += 1
+    
+    def train_double(self, batch: EpisodeBatch, t_env: int, episode_num: int, task: str):
+        self.train_policy(batch, t_env, episode_num, task)
+        self.train_policy2(batch, t_env, episode_num, task)
         self.current_steps += 1
 
     def _update_targets(self):

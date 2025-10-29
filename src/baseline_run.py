@@ -57,8 +57,10 @@ def run(_run, _config, _log):
 
     # sacred is on by default
     logger.setup_sacred(_run)
-
-    wandb_name = f"agent={args.algo_name}-geq={args.geq}-alpha={str(args.split_alpha)}-beta={str(args.split_beta)}"
+    if args.split_bc:
+        wandb_name = f"agent={args.algo_name}-geq={args.geq}-alpha={str(args.split_alpha)}-beta={str(args.split_beta)}"
+    else:
+        wandb_name = f"agent={args.algo_name}"
     _config["job"] = _config["name"]
     # _config = {k: str(v) for k, v in _config.items()}
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
@@ -502,11 +504,19 @@ def train_sequential(
                 episode_sample.to(task2args[task].device)
             
             if callable(update_fn):
-                terminated = learner.train(
+                if main_args.split_ds:
+                    terminated = learner.train_double(
                     episode_sample, t_env / len(train_tasks), episode, task
-                )
+                    )
+                else:
+                    terminated = learner.train(
+                        episode_sample, t_env / len(train_tasks), episode, task
+                    )
             else:
-                terminated = learner.train(episode_sample, t_env, episode, task)
+                if main_args.split_ds:
+                    terminated = learner.train_double(episode_sample, t_env, episode, task)
+                else:
+                    terminated = learner.train(episode_sample, t_env, episode, task)
 
             if terminated is not None and terminated:
                 break

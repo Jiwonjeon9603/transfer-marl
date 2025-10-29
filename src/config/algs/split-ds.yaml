@@ -53,10 +53,8 @@ depth: 2
 token_dropout: 0.1
 
 bc: True
-split_bc: True
-geq: True
-split_alpha: 1
-split_beta: 1
+split_ds: True
+split_bc: False
 
 attention_heatmap: False
 heatmap_batch_indices: [0]
@@ -64,4 +62,4 @@ heatmap_num_plots: 10
 
 
 
-algo_name: "Split-bc"
+algo_name: "Split-ds"
