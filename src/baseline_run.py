@@ -60,7 +60,7 @@ def run(_run, _config, _log):
     if getattr(args, "split_bc", False):
         wandb_name = f"agent={args.algo_name}-geq={args.geq}-alpha={str(args.split_alpha)}-beta={str(args.split_beta)}"
     else:
-        wandb_name = f"agent={args.algo_name}"
+        wandb_name = f"agent={args.algo_name}-mixer={args.mixer}"
     _config["job"] = _config["name"]
     # _config = {k: str(v) for k, v in _config.items()}
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
