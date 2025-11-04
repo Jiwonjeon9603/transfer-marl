@@ -48,7 +48,7 @@ pretrain: True
 type_conservative: "norm"
 
 head: 1
-depth: 1
+depth: 2
 
 token_dropout: 0.1
 
@@ -61,7 +61,7 @@ heatmap_num_plots: 10
 split_ds: False
 
 s0_filter: True
-s0_filter_threshold: 100
-s0_filter_topk: 100
+s0_filter_threshold: 3
+s0_filter_topk: 3
 
 algo_name: "DataAdj"
