@@ -66,7 +66,7 @@ def run(_run, _config, _log):
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
     # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
     wandb.init(
-        project="Proposal-MTMA-21",
+        project="test-Proposal-MTMA-21",
         group=_config["task"],
         name=wandb_name,
         config=_config,
@@ -469,6 +469,7 @@ def train_sequential(
     task2args,
     task2runner,
     task2offlinedata,
+    num_filtered_ds,
     t_start=0,
     test_task2offlinedata=None,
 ):
@@ -494,12 +495,74 @@ def train_sequential(
     test_time_total += time.time() - test_start_time
     update_fn = getattr(learner, "update", None)
 
+    if getattr(main_args, "s0_filter", False):
+        task_sizes = np.array([num_filtered_ds[t] for t in train_tasks], dtype=np.float32)
+        task_probs = task_sizes / task_sizes.sum()
+        wandb.config.update({
+                f"num_filtered_ds/{task}": size for task, size in num_filtered_ds.items()
+            })
+        wandb.log({
+        **{f"num_filtered_ds/{task}": size for task, size in num_filtered_ds.items()},
+        "time step": 0,  # optional, 초기 step 기준
+        })
+        # print(num_filtered_ds)
+
     while t_env < t_max: # while cur_t < t_max:
-        # shuffle tasks
-        np.random.shuffle(train_tasks)
-        for task in train_tasks:
-        # train each task
+
+        if getattr(main_args, "s0_filter", False):
+            task = np.random.choice(train_tasks, p=task_probs)
             episode_sample = task2offlinedata[task].sample(batch_size_train)
+            draw_sample = False
+            if draw_sample:
+                all_ds = task2offlinedata[task].sample(num_filtered_ds[task])
+                
+                ###### state ######
+                s0 = all_ds["state"][:, 0,:]
+                # 1️⃣ Convert each state into a rounded, hashable tuple
+                state_strs = [tuple(np.round(s, 6)) for s in s0.cpu()]
+
+                # 2️⃣ Compute unique states and their occurrence counts
+                unique_states, counts = np.unique(state_strs, axis=0, return_counts=True)
+
+                # 3️⃣ Count how many unique states appear N times
+                unique_counts, freq = np.unique(counts, return_counts=True)
+
+                # 4️⃣ Plot the histogram
+                plt.figure(figsize=(8, 5))
+                plt.bar(unique_counts, freq, width=0.6, color='skyblue', edgecolor='black')
+                plt.xlabel("Number of occurrences per unique state", fontsize=12)
+                plt.ylabel("Number of unique states", fontsize=12)
+                plt.title("Distribution of State Duplications", fontsize=14, fontweight='bold')
+                plt.grid(True, alpha=0.3)
+
+                # 5️⃣ Save the figure
+                plt.tight_layout()
+                plt.savefig(f"images/state_duplication_histogram_{task}.png", dpi=300)
+                plt.show()
+                
+                ##### return ######
+                rewards = all_ds["reward"]
+                discounts = 0.99 ** np.arange(rewards.shape[1])
+                returns = (rewards.cpu().squeeze(-1) * discounts).sum(axis=1)  # shape: (2000,)
+                
+                rounded_returns = np.round(returns, 3)
+                unique_returns, counts = np.unique(rounded_returns, return_counts=True)
+
+                # 3️⃣ 중복 빈도 분포 계산 (예: return이 n번 등장한 경우 몇 개?)
+                unique_counts, freq = np.unique(counts, return_counts=True)
+
+                # 4️⃣ 그래프 시각화
+                plt.figure(figsize=(8, 5))
+                plt.bar(unique_counts, freq, width=0.6, color='lightcoral', edgecolor='black')
+                plt.xlabel("Number of occurrences per unique return", fontsize=12)
+                plt.ylabel("Number of unique returns", fontsize=12)
+                plt.title("Distribution of Return Duplications", fontsize=14, fontweight='bold')
+                plt.grid(True, alpha=0.3)
+                plt.tight_layout()
+                plt.savefig(f"images/return_duplication_histogram_{task}.png", dpi=300)
+                
+                exit()
+            
             if episode_sample.device != task2args[task].device:
                 episode_sample.to(task2args[task].device)
 
@@ -584,7 +647,150 @@ def train_sequential(
                     }
                 )
 
+
         # cur_t = 0
+        
+        else:
+            np.random.shuffle(train_tasks)
+            for task in train_tasks:
+            # train each task
+                episode_sample = task2offlinedata[task].sample(batch_size_train)
+                draw_sample = True
+                if draw_sample:
+                    all_ds = task2offlinedata[task].sample(2000)
+                    
+                    ###### state ######
+                    s0 = all_ds["state"][:, 0,:]
+                    # 1️⃣ Convert each state into a rounded, hashable tuple
+                    state_strs = [tuple(np.round(s, 6)) for s in s0.cpu()]
+
+                    # 2️⃣ Compute unique states and their occurrence counts
+                    unique_states, counts = np.unique(state_strs, axis=0, return_counts=True)
+
+                    # 3️⃣ Count how many unique states appear N times
+                    unique_counts, freq = np.unique(counts, return_counts=True)
+
+                    # 4️⃣ Plot the histogram
+                    plt.figure(figsize=(8, 5))
+                    plt.bar(unique_counts, freq, width=0.6, color='skyblue', edgecolor='black')
+                    plt.xlabel("Number of occurrences per unique state", fontsize=12)
+                    plt.ylabel("Number of unique states", fontsize=12)
+                    plt.title("Distribution of State Duplications", fontsize=14, fontweight='bold')
+                    plt.grid(True, alpha=0.3)
+
+                    # 5️⃣ Save the figure
+                    plt.tight_layout()
+                    plt.savefig(f"images/state_duplication_histogram_{task}.png", dpi=300)
+                    plt.show()
+                    
+                    ##### return ######
+                    rewards = all_ds["reward"]
+                    discounts = 0.99 ** np.arange(rewards.shape[1])
+                    returns = (rewards.cpu().squeeze(-1) * discounts).sum(axis=1)  # shape: (2000,)
+                    
+                    rounded_returns = np.round(returns, 3)
+                    unique_returns, counts = np.unique(rounded_returns, return_counts=True)
+
+                    # 3️⃣ 중복 빈도 분포 계산 (예: return이 n번 등장한 경우 몇 개?)
+                    unique_counts, freq = np.unique(counts, return_counts=True)
+
+                    # 4️⃣ 그래프 시각화
+                    plt.figure(figsize=(8, 5))
+                    plt.bar(unique_counts, freq, width=0.6, color='lightcoral', edgecolor='black')
+                    plt.xlabel("Number of occurrences per unique return", fontsize=12)
+                    plt.ylabel("Number of unique returns", fontsize=12)
+                    plt.title("Distribution of Return Duplications", fontsize=14, fontweight='bold')
+                    plt.grid(True, alpha=0.3)
+                    plt.tight_layout()
+                    plt.savefig(f"images/return_duplication_histogram_{task}.png", dpi=300)
+                    
+                    exit()
+                
+                if episode_sample.device != task2args[task].device:
+                    episode_sample.to(task2args[task].device)
+
+                if callable(update_fn):
+                    if main_args.split_ds:
+                        terminated = learner.train_double(
+                        episode_sample, t_env / len(train_tasks), episode, task
+                        )
+                    else:
+                        terminated = learner.train(
+                            episode_sample, t_env / len(train_tasks), episode, task
+                        )
+                else:
+                    if main_args.split_ds:
+                        terminated = learner.train_double(episode_sample, t_env, episode, task)
+                    else:
+                        terminated = learner.train(episode_sample, t_env, episode, task)
+
+                if terminated is not None and terminated:
+                    break
+
+                episode += batch_size_run
+                t_env += 1
+                # cur_t += 1
+
+                if callable(update_fn):
+                    update_fn()
+
+                if terminated is not None and terminated:
+                    logger.console_logger.info(
+                        f"Terminate training by the learner at t_env = {t_env}. Finish training."
+                    )
+                    break
+
+                # Execute test runs once in a while & final evaluation
+                if (t_env - last_test_T) / main_args.test_interval >= 1 or t_env >= t_max:
+                    test_start_time = time.time()
+
+                    with th.no_grad():
+                        for test_task in main_args.test_tasks:
+                            task2runner[test_task].t_env = t_env
+                            for _ in range(n_test_runs):
+                                task2runner[test_task].run(test_mode=True)
+
+                    test_time_total += time.time() - test_start_time
+
+                    logger.console_logger.info("Step: {} / {}".format(t_env, t_max))
+                    logger.console_logger.info(
+                        "Estimated time left: {}. Time passed: {}. Test time cost: {}".format(
+                            time_left(last_time, last_test_T, t_env, t_max),
+                            time_str(time.time() - start_time),
+                            time_str(test_time_total),
+                        )
+                    )
+                    last_time = time.time()
+                    last_test_T = t_env
+
+                if main_args.save_model and (
+                    t_env - model_save_time >= main_args.save_model_interval
+                    or model_save_time == 0
+                ):
+                    save_path = os.path.join(main_args.save_dir, str(t_env))
+                    os.makedirs(save_path, exist_ok=True)
+                    logger.console_logger.info("Saving models to {}".format(save_path))
+                    learner.save_models(save_path)
+                    model_save_time = t_env
+
+                if (t_env - last_log_T) >= main_args.log_interval:
+                    last_log_T = t_env
+                    logger.log_stat("episode", episode, t_env)
+                    logger.print_recent_stats()
+                    max_log_len = max([len(v) for k, v in logger.stats.items()])
+
+                    wandb.log(
+                        {
+                            "time step": t_env,
+                            **{
+                                f"{k}": v[-1][1]
+                                for k, v in logger.stats.items()
+                                if len(v) == max_log_len
+                            },
+                        }
+                    )
+
+            # cur_t = 0
 
 def run_sequential(args, logger):
     # Init runner so we can get env info
@@ -681,6 +887,15 @@ def run_sequential(args, logger):
     
     # initialize training data for each task
     task2offlinedata = {}
+    num_filtered_ds = {}
+    if not getattr(args, "s0_filter", False):
+        s0_filter_threshold=None
+        s0_filter_topk=None
+    else:
+        s0_filter_threshold=args.s0_filter_threshold
+        s0_filter_topk=args.s0_filter_threshold
+        
+    
     for task in main_args.train_tasks:
         # create offline data buffer
         task2offlinedata[task] = OfflineBuffer(
@@ -689,7 +904,13 @@ def run_sequential(args, logger):
             data_folder=main_args.offline_data_name,
             offline_data_size=args.offline_data_size,
             random_sample=args.offline_data_shuffle,
+            s0_filter_threshold=s0_filter_threshold, 
+            s0_filter_topk=s0_filter_topk
         )
+        num_filtered_ds[task] = task2offlinedata[task].buffer.num_data
+        
+        
+        
 
     logger.console_logger.info(
         "Beginning multi-task offline training with {} timesteps for each task".format(
@@ -704,6 +925,7 @@ def run_sequential(args, logger):
         task2args,
         task2runner,
         task2offlinedata,
+        num_filtered_ds
     )
     wandb.finish()
     # save the final model

@@ -71,15 +71,28 @@ class OfflineBufferH5FullData():
 
 
 class OfflineBufferH5():
-    def __init__(self, datapaths, offline_data_size=2000, device="cpu", random_sample=True):
+    def __init__(self, datapaths, offline_data_size=2000, device="cpu", random_sample=True, s0_filter_threshold=None, s0_filter_topk=None):
         offline_data_size = 100000000 if offline_data_size <= 0 else offline_data_size
 
         dataset_sources = len(datapaths)
         data_size_per_source = offline_data_size // dataset_sources
         dataset = [ self._read_data(datapaths[i], data_size_per_source, random_sample) for i in range(dataset_sources) ] 
-        self.data = {
+        
+        data = {
             k: np.concatenate([v[k] for v in dataset], axis=0) for k in dataset[0].keys()
         }
+        if s0_filter_threshold is not None:
+            data, num_data = filter_by_s0_and_return(
+                data,
+                threshold=s0_filter_threshold,
+                topk=s0_filter_topk,
+                gamma=0.99
+            )
+            self.num_data = num_data
+        else:
+            self.num_data = offline_data_size
+        
+        self.data = data
 
         self.keys = list(self.data.keys())
         self.buffer_size = self.data[self.keys[0]].shape[0]
@@ -189,7 +202,7 @@ class OfflineBufferPickle():
 
 
 class OfflineBuffer():
-    def __init__(self, map_name, quality, data_folder=None, dataset_folder='dataset', offline_data_size=2000, device="cuda", random_sample=True):
+    def __init__(self, map_name, quality, data_folder=None, dataset_folder='dataset', offline_data_size=2000, device="cuda", random_sample=True, s0_filter_threshold=None, s0_filter_topk=None):
         datapaths = []
         if quality == 'medium-expert':
             datapaths.append(self._load_data_sources(dataset_folder, map_name, 'medium', data_folder))
@@ -200,7 +213,7 @@ class OfflineBuffer():
         if all([all(['pkl' in f for f in paths]) for paths in datapaths]):
             self.buffer = OfflineBufferPickle(datapaths, offline_data_size=offline_data_size, device=device, random_sample=random_sample)
         elif all([all(['h5' in f for f in paths]) for paths in datapaths]):
-            self.buffer = OfflineBufferH5(datapaths, offline_data_size=offline_data_size, device=device, random_sample=random_sample)
+            self.buffer = OfflineBufferH5(datapaths, offline_data_size=offline_data_size, device=device, random_sample=random_sample, s0_filter_threshold=s0_filter_threshold, s0_filter_topk=s0_filter_topk)
         else:
             raise ValueError("Cannot find parser for data files including {}".format(datapaths))
 
@@ -284,3 +297,73 @@ class DataSaver():
     def close(self):
         self.save_batch()
         return self.datadir
+
+
+
+def filter_by_s0_and_return(
+    data,
+    threshold=10,
+    topk=10,
+    gamma=0.99,
+    s0_key="state",      # 또는 "obs" 등 네 데이터 구조에 맞게
+    reward_key="reward",
+    filled_key="filled",
+):
+    """
+    data: dict of numpy arrays, shape[0] = num_episodes
+    s0가 threshold개 이상 겹치는 그룹에서는 return 상위 topk 에피소드만 남기고 나머지 버림.
+    """
+    # ----- 1) 에피소드 수 및 s0 추출 -----
+    N = data[s0_key].shape[0]
+    # state: (N, T, state_dim...)라고 가정하고 첫 타임스텝만 사용
+    s0 = data[s0_key][:, 0]          # shape: (N, state_dim...)
+    s0_flat = s0.reshape(N, -1)      # shape: (N, D)
+    s0_flat = np.round(s0_flat, 6)   # float noise 방지
+    s0_keys = [tuple(row) for row in s0_flat]
+
+    # ----- 2) return 계산 -----
+    rewards = data[reward_key]       # (N, T, 1) or (N, T)
+    if rewards.ndim == 3:            # (N, T, 1) → (N, T)
+        rewards = rewards[..., 0]
+
+    if filled_key in data:
+        filled = data[filled_key].astype(bool)   # (N, T, 1) or (N, T)
+        if filled.ndim == 3:
+            filled = filled[..., 0]
+    else:
+        filled = np.ones_like(rewards, dtype=bool)
+
+    T = rewards.shape[1]
+    gammas = gamma ** np.arange(T)              # (T,)
+    # broadcast: (N, T) * (T,) * (N, T)
+    returns = (rewards * gammas * filled).sum(axis=1)   # (N,)
+
+    # ----- 3) s0별로 에피소드 인덱스 그룹화 -----
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for idx, key in enumerate(s0_keys):
+        groups[key].append(idx)
+
+    # ----- 4) threshold 넘는 그룹은 return 상위 topk만 남기기 -----
+    keep_indices = []
+    for key, idxs in groups.items():
+        if len(idxs) <= threshold:
+            # threshold 이하 → 전부 유지
+            keep_indices.extend(idxs)
+        else:
+            # threshold 초과 → return 기준 상위 topk만 유지
+            idxs_sorted = sorted(idxs, key=lambda i: returns[i], reverse=True)
+            keep_indices.extend(idxs_sorted[:topk])
+
+    keep_indices = np.array(sorted(keep_indices))
+
+    # ----- 5) 모든 키에 대해 동일한 인덱스로 slice -----
+    filtered_data = {k: v[keep_indices] for k, v in data.items()}
+
+    print(
+        f"[s0 filter] original episodes = {N}, "
+        f"after filter = {len(keep_indices)} "
+        f"(threshold={threshold}, topk={topk})"
+    )
+
+    return filtered_data, len(keep_indices)

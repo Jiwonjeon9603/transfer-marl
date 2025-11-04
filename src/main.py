@@ -167,7 +167,7 @@ if __name__ == "__main__":
     #         assert False, "default.yaml error: {}".format(exc)
 
     # with open(
-    #     os.path.join(os.path.dirname(__file__), "config/algs", "split-ds.yaml"), "r"
+    #     os.path.join(os.path.dirname(__file__), "config/algs", "data-bc.yaml"), "r"
     # ) as f:
     #     try:
     #         alg_config = yaml.full_load(f)
@@ -176,7 +176,7 @@ if __name__ == "__main__":
 
     # with open(
     #     os.path.join(
-    #         os.path.dirname(__file__), "config/tasks", "marine-hard-medium.yaml"
+    #         os.path.dirname(__file__), "config/tasks", "marine-hard-medium-3m.yaml"
     #     ),
     #     "r",
     # ) as f:
