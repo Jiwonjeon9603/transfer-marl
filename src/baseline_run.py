@@ -24,6 +24,9 @@ import matplotlib as mpl
 
 import wandb
 
+from sklearn.manifold import TSNE
+from collections import defaultdict
+from sklearn.cluster import DBSCAN
 
 def run(_run, _config, _log):
     # check args sanity
@@ -660,50 +663,109 @@ def train_sequential(
                     all_ds = task2offlinedata[task].sample(2000)
                     
                     ###### state ######
-                    s0 = all_ds["state"][:, 0,:]
-                    # 1️⃣ Convert each state into a rounded, hashable tuple
-                    state_strs = [tuple(np.round(s, 6)) for s in s0.cpu()]
+                    state = all_ds["state"].cpu()
 
-                    # 2️⃣ Compute unique states and their occurrence counts
-                    unique_states, counts = np.unique(state_strs, axis=0, return_counts=True)
+                    B, T, D = state.shape
+                    device = state.device
 
-                    # 3️⃣ Count how many unique states appear N times
-                    unique_counts, freq = np.unique(counts, return_counts=True)
+                    # --- s_t, s_{t+1} 추출 ---
+                    s_t = state[:, :-1, :].reshape(-1, D)      # [B*(T-1), D]
+                    s_next = state[:, 1:, :].reshape(-1, D)    # [B*(T-1), D]
 
-                    # 4️⃣ Plot the histogram
-                    plt.figure(figsize=(8, 5))
-                    plt.bar(unique_counts, freq, width=0.6, color='skyblue', edgecolor='black')
-                    plt.xlabel("Number of occurrences per unique state", fontsize=12)
-                    plt.ylabel("Number of unique states", fontsize=12)
-                    plt.title("Distribution of State Duplications", fontsize=14, fontweight='bold')
-                    plt.grid(True, alpha=0.3)
+                    # --- 근사 비교를 위해 rounding ---
+                    precision = 3
+                    s_t_rounded = th.round(s_t * 10**precision).int().cpu().numpy()
+                    s_next_rounded = th.round(s_next * 10**precision).int().cpu().numpy()
 
-                    # 5️⃣ Save the figure
+                    # --- transition mapping 구성 ---
+                    keys = [tuple(x) for x in s_t_rounded]
+                    values = [tuple(x) for x in s_next_rounded]
+
+                    next_dict = defaultdict(set)
+                    for k, v in zip(keys, values):
+                        next_dict[k].add(v)
+
+                    transition_variety = {k: len(v) for k, v in next_dict.items()}
+                    avg_branching = np.mean(list(transition_variety.values()))
+
+                    # --- 다양성 높은 top-5 ---
+                    sorted_items = sorted(transition_variety.items(), key=lambda x: -x[1])[:5]
+
+                    branch_counts = [cnt for cnt in transition_variety.values() if cnt > 1]
+                    plt.figure(figsize=(6,5))
+                    plt.hist(branch_counts, bins=30, color="steelblue", edgecolor="black")
+                    plt.xlabel("# of distinct next states per s_t ( > 1 only )")
+                    plt.ylabel("Count")
+                    plt.title("Transition Diversity Histogram (branching states only)")
                     plt.tight_layout()
-                    plt.savefig(f"images/state_duplication_histogram_{task}.png", dpi=300)
-                    plt.show()
-                    
-                    ##### return ######
-                    rewards = all_ds["reward"]
-                    discounts = 0.99 ** np.arange(rewards.shape[1])
-                    returns = (rewards.cpu().squeeze(-1) * discounts).sum(axis=1)  # shape: (2000,)
-                    
-                    rounded_returns = np.round(returns, 3)
-                    unique_returns, counts = np.unique(rounded_returns, return_counts=True)
+                    plt.savefig(f"images/transition_diversity_{task}.png", dpi=300)
 
-                    # 3️⃣ 중복 빈도 분포 계산 (예: return이 n번 등장한 경우 몇 개?)
-                    unique_counts, freq = np.unique(counts, return_counts=True)
+###################################################################################################################
 
-                    # 4️⃣ 그래프 시각화
-                    plt.figure(figsize=(8, 5))
-                    plt.bar(unique_counts, freq, width=0.6, color='lightcoral', edgecolor='black')
-                    plt.xlabel("Number of occurrences per unique return", fontsize=12)
-                    plt.ylabel("Number of unique returns", fontsize=12)
-                    plt.title("Distribution of Return Duplications", fontsize=14, fontweight='bold')
-                    plt.grid(True, alpha=0.3)
-                    plt.tight_layout()
-                    plt.savefig(f"images/return_duplication_histogram_{task}.png", dpi=300)
+                    # # --- 텍스트 파일로 저장 ---
+                    # output_path = f"{task}_transition_analysis.txt"
+                    # with open(output_path, "w", encoding="utf-8") as f:
+                    #     f.write("==== Transition Diversity Analysis ====\n")
+                    #     f.write(f"Total unique s_t: {len(transition_variety)}\n")
+                    #     f.write(f"Average branching count: {avg_branching:.3f}\n\n")
+
+                    #     f.write("---- Top-5 states with most diverse next states ----\n")
+                    #     for i, (k, cnt) in enumerate(sorted_items, 1):
+                    #         f.write(f"{i}) s_t={np.array(k)} → {cnt} unique s_(t+1)\n")
+
+                    #     # f.write("\n---- Full transition diversity list ----\n")
+                    #     # for k, cnt in transition_variety.items():
+                    #     #     f.write(f"s_t={np.array(k)} → {cnt} unique s_(t+1)\n")
+
+                    # print(f"✅ Transition analysis results saved to: {output_path}")
+                                        
+                    # traj = state.reshape(B, -1)
                     
+                    # with th.no_grad():
+                    #     dist = th.cdist(traj, traj, p=2)
+
+                    # dist_np = dist.cpu().numpy()
+                    # plt.figure(figsize=(6, 5))
+                    # im = plt.imshow(dist_np, interpolation='nearest')
+                    # plt.title("Trajectory Pairwise Distance")
+                    # plt.xlabel("Trajectory index")
+                    # plt.ylabel("Trajectory index")
+                    # plt.colorbar(im, label="L2 distance")
+                    # plt.tight_layout()
+                    # plt.savefig(f"images/heatmap_{task}.png", dpi=300)
+
+                    # traj_np = traj.detach().cpu().numpy()
+                    # tsne = TSNE(
+                    #     n_components=2,
+                    #     perplexity=min(30, B-1),  # batch_size 작으면 자동 조절
+                    #     metric="euclidean",
+                    #     init="pca",
+                    #     learning_rate="auto",
+                    #     max_iter=1000,
+                    #     verbose=1,
+                    # )
+
+                    # emb_2d = tsne.fit_transform(traj_np)  # [B, 2]                    
+                    # plt.figure(figsize=(6, 5))
+                    # plt.scatter(emb_2d[:, 0], emb_2d[:, 1])
+                    # plt.title("t-SNE of Trajectories")
+                    # plt.xlabel("Dim 1")
+                    # plt.ylabel("Dim 2")
+                    # plt.tight_layout()
+                    # plt.savefig(f"images/tsne_{task}.png", dpi=300)
+
+                    # threshold = 20 # 상황에 맞게 튜닝
+                    # similar_counts = (dist < threshold).sum(dim=1) - 1  # 자기 자신 제외 → [B]
+
+                    # plt.figure(figsize=(6, 5))
+                    # sc = plt.scatter(emb_2d[:, 0], emb_2d[:, 1], c=similar_counts.cpu(), s=40)
+                    # plt.colorbar(sc, label=f"# of neighbors (dist < {threshold})")
+                    # plt.title("t-SNE (colored by # of similar trajectories)")
+                    # plt.xlabel("Dim 1")
+                    # plt.ylabel("Dim 2")
+                    # plt.tight_layout()
+                    # plt.savefig(f"images/neighbor_tsne_{task}.png", dpi=300)
+
                     exit()
                 
                 if episode_sample.device != task2args[task].device:
@@ -893,7 +955,7 @@ def run_sequential(args, logger):
         s0_filter_topk=None
     else:
         s0_filter_threshold=args.s0_filter_threshold
-        s0_filter_topk=args.s0_filter_threshold
+        s0_filter_topk=args.s0_filter_topk
         
     
     for task in main_args.train_tasks:

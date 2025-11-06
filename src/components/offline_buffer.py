@@ -4,6 +4,7 @@ import torch as th
 import numpy as np
 import h5py
 from sys import stderr
+from collections import defaultdict
 
 class OfflineSample():
     def __init__(self, data, batch_size, max_seq_length, device="cpu"):
@@ -82,7 +83,7 @@ class OfflineBufferH5():
             k: np.concatenate([v[k] for v in dataset], axis=0) for k in dataset[0].keys()
         }
         if s0_filter_threshold is not None:
-            data, num_data = filter_by_s0_and_return(
+            data, num_data = filter_by_st_transition_and_return(
                 data,
                 threshold=s0_filter_threshold,
                 topk=s0_filter_topk,
@@ -366,4 +367,103 @@ def filter_by_s0_and_return(
         f"(threshold={threshold}, topk={topk})"
     )
 
+    return filtered_data, len(keep_indices)
+
+
+def filter_by_st_transition_and_return(
+    data,
+    threshold=10,
+    topk=10,
+    gamma=0.99,
+    s0_key="state",     # or "obs"
+    reward_key="reward",
+    filled_key="filled"
+):
+
+    N, T = data[s0_key].shape[:2]
+    s = data[s0_key].reshape(N, T, -1)  # (N, T, D)
+    rewards = data[reward_key]
+    if rewards.ndim == 3:
+        rewards = rewards[..., 0]
+    if filled_key in data:
+        filled = data[filled_key].astype(bool)
+        if filled.ndim == 3:
+            filled = filled[..., 0]
+    else:
+        filled = np.ones_like(rewards, dtype=bool)
+
+    # --- Return 계산 ---
+    gammas = gamma ** np.arange(T)
+    returns = (rewards * gammas * filled).sum(axis=1)  # (N,)
+
+    # --- (s_t, s_{t+1}) 쌍 ---
+    s_t = np.round(s[:, :-1, :], 3)
+    s_next = np.round(s[:, 1:, :], 3)
+
+    # --- (s_t, s_{t+1}) → episode index 매핑 ---
+    transition_groups = defaultdict(list)
+    for i in range(N):
+        for t in range(T - 1):
+            st_key = tuple(s_t[i, t])
+            st1_key = tuple(s_next[i, t])
+            transition_groups[st_key].append((st1_key, i))
+
+    # =========================
+    # 여기부터 필터링 로직 수정
+    # =========================
+
+    # 처음엔 모든 episode가 살아있다고 가정
+    alive_indices = set(range(N))
+
+    for st_key, transitions in transition_groups.items():
+        # 이미 죽은 episode는 여기서부터는 무시
+        next_groups = defaultdict(list)
+        for st1_key, idx in transitions:
+            if idx in alive_indices:
+                next_groups[st1_key].append(idx)
+
+        # 모두 죽었거나, alive한 transition이 없으면 skip
+        if not next_groups:
+            continue
+
+        # branch 개수 (s_t에서 나오는 서로 다른 s_{t+1} 개수)
+        if len(next_groups) < threshold:
+            # threshold 이하이면, 이 s_t에서는 추가적인 필터링을 하지 않음
+            # (alive_indices는 그대로 둠)
+            continue
+
+        # threshold를 넘는 high-branching state인 경우
+        # → 이 s_t를 밟은 alive episode들 중에서만 top-k를 남기고 나머지는 죽임
+        candidate_indices = set()
+        for group in next_groups.values():
+            candidate_indices.update(group)
+
+        # 혹시나 candidate가 모두 이미 죽었으면 패스
+        candidate_indices &= alive_indices
+        if not candidate_indices:
+            continue
+
+        # return 기준 내림차순 정렬
+        sorted_by_return = sorted(
+            candidate_indices,
+            key=lambda x: returns[x],
+            reverse=True
+        )
+
+        # 이 state 기준으로 살려둘 episode
+        keep_here = set(sorted_by_return[:topk])
+
+        # 나머지는 이번 기회에 영구 제거
+        removed_here = candidate_indices - keep_here
+        alive_indices -= removed_here
+
+    # 최종적으로 alive한 episode만 유지
+    keep_indices = sorted(list(alive_indices))
+    filtered_data = {k: v[keep_indices] for k, v in data.items()}
+
+    print(
+        f"[transition filter] original episodes = {N}, "
+        f"after filter = {len(keep_indices)} "
+        f"(threshold={threshold}, topk={topk})"
+    )
     return filtered_data, len(keep_indices)

@@ -61,7 +61,7 @@ heatmap_num_plots: 10
 split_ds: False
 
 s0_filter: True
-s0_filter_threshold: 3
-s0_filter_topk: 3
+s0_filter_threshold: 10
+s0_filter_topk: 5
 
-algo_name: "DataAdj"
+algo_name: "DataAdj_Transition"

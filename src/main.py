@@ -176,7 +176,7 @@ if __name__ == "__main__":
 
     # with open(
     #     os.path.join(
-    #         os.path.dirname(__file__), "config/tasks", "marine-hard-medium-3m.yaml"
+    #         os.path.dirname(__file__), "config/tasks", "stalker-zealot-medium.yaml"
     #     ),
     #     "r",
     # ) as f:
