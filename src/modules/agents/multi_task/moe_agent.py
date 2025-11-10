@@ -5,6 +5,67 @@ import torch.nn.functional as F
 
 from utils.embed import polynomial_embed, binary_embed
 from utils.transformer import Transformer
+
+class MoEQLayer(nn.Module):
+    """
+    Transformer 출력 (B*n_agents, T_tokens, D) 에서
+    여러 expert의 Q를 만든 뒤, own+history 기반 gate로 soft mixture 하는 레이어
+    """
+    def __init__(self, embed_dim, n_actions_no_attack, n_experts: int):
+        super().__init__()
+        self.n_experts = n_experts
+        self.embed_dim = embed_dim
+
+        # --- experts: 각 expert가 전체 토큰에 대해 Q를 예측 ---
+        self.experts = nn.ModuleList([
+            nn.Linear(embed_dim, n_actions_no_attack) for _ in range(n_experts)
+        ])
+
+        # --- gate: own + history 토큰을 concat해서 사용 ---
+        gate_in_dim = embed_dim * 2
+        self.gate = nn.Sequential(
+            nn.Linear(gate_in_dim, embed_dim),
+            nn.ReLU(),
+            nn.Linear(embed_dim, n_experts),
+        )
+
+    def forward(self, outputs):
+        """
+        outputs: (B*n_agents, T_tokens, D)
+        return:
+          - q_all: (B*n_agents, T_tokens, n_actions_no_attack)
+          - gate:  (B*n_agents, n_experts)
+        """
+        B, T, D = outputs.shape
+
+        # own token (0번째), history token (마지막 토큰)
+        own_feat     = outputs[:, 0, :]    # (B*n_agents, D)
+        history_feat = outputs[:, -1, :]   # (B*n_agents, D)
+
+        gate_in = th.cat([own_feat, history_feat], dim=-1)  # (B*n_agents, 2D)
+
+        gate_logits = self.gate(gate_in)          # (B*n_agents, K)
+        gate = F.softmax(gate_logits, dim=-1)     # (B*n_agents, K)
+
+        # --- expert별 Q 계산 ---
+        expert_q = []
+        for exp in self.experts:
+            q_e = exp(outputs)                    # (B*n_agents, T, A_no_attack)
+            expert_q.append(q_e.unsqueeze(1))     # (B*n_agents, 1, T, A_no_attack)
+
+        # (B*n_agents, K, T, A_no_attack)
+        expert_q = th.cat(expert_q, dim=1)
+
+        # gate: (B*n_agents, K) -> (B*n_agents, K, 1, 1)
+        gate = gate.view(B, self.n_experts, 1, 1)
+
+        # soft mixture over experts
+        q_all = th.sum(gate * expert_q, dim=1)    # (B*n_agents, T, A_no_attack)
+
+        return q_all, gate
+
+
+
 class MoEAgent(nn.Module):
     """  sotax agent for multi-task learning """
 
@@ -46,13 +107,14 @@ class MoEAgent(nn.Module):
         self.transformer = Transformer(self.entity_embed_dim, args.head, args.depth, self.entity_embed_dim)
 
         # self.q_skill = nn.Linear(self.entity_embed_dim, n_actions_no_attack)
-        self.task_q_skill = nn.ModuleDict()
-        for task, dec in task2decomposer.items():
-            n_actions_no_attack_t = dec.n_actions_no_attack
-            self.task_q_skill[task] = nn.Linear(self.entity_embed_dim, n_actions_no_attack_t)
+        if self.args.multi_head:
+            self.task_q_skill = nn.ModuleDict()
+            for task, dec in task2decomposer.items():
+                n_actions_no_attack_t = dec.n_actions_no_attack
+                self.task_q_skill[task] = nn.Linear(self.entity_embed_dim, n_actions_no_attack_t)
+        else:
+            self.q_skill = MoEQLayer(embed_dim=self.entity_embed_dim, n_actions_no_attack=n_actions_no_attack, n_experts=self.args.n_experts)
 
-
-            
 
     def init_hidden(self):
         # make hidden states on the same device as model
@@ -146,7 +208,11 @@ class MoEAgent(nn.Module):
 
 
         # q_all = self.q_skill(outputs)
-        q_all = self.task_q_skill[task](outputs)
+        if self.args.multi_head:
+            q_all = self.task_q_skill[task](outputs)
+        else:
+            q_all, gate = self.q_skill(outputs) 
+            
         q_base = q_all[:, 0, :]
         q_attack = th.mean(q_all[:, 1:enemy_feats.size(0)+1, :], -1)
         q = th.cat([q_base, q_attack], dim=-1)

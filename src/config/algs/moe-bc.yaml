@@ -60,4 +60,7 @@ heatmap_num_plots: 10
 
 split_ds: False
 
-algo_name: "MoE-MultiHead"
+multi_head: False
+n_experts: 3
+
+algo_name: "MoE"

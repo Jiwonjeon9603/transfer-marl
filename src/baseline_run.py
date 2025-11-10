@@ -63,7 +63,11 @@ def run(_run, _config, _log):
     if getattr(args, "s0_filter", False):
         wandb_name = f"agent={args.algo_name}-s0_thresh={str(args.s0_filter_threshold)}-s0_topk={str(args.s0_filter_topk)}"
     else:
-        wandb_name = f"agent={args.algo_name}"
+        if args.algo_name == "MoE":
+            if args.multi_head:
+                wandb_name = f"agent={args.algo_name}_MultiHead"
+            else:
+                wandb_name = f"agent={args.algo_name}"
     _config["job"] = _config["name"]
     # _config = {k: str(v) for k, v in _config.items()}
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
