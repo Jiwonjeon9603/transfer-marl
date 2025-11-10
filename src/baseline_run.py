@@ -69,7 +69,7 @@ def run(_run, _config, _log):
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
     # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
     wandb.init(
-        project="Proposal-MTMA-21",
+        project="test-Proposal-MTMA-21",
         group=_config["task"],
         name=wandb_name,
         config=_config,
@@ -658,7 +658,7 @@ def train_sequential(
             for task in train_tasks:
             # train each task
                 episode_sample = task2offlinedata[task].sample(batch_size_train)
-                draw_sample = True
+                draw_sample = False
                 if draw_sample:
                     all_ds = task2offlinedata[task].sample(2000)
                     
