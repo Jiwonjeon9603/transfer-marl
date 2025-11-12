@@ -47,6 +47,11 @@ class UPDeTAgent(nn.Module):
 
         self.q_skill = nn.Linear(self.entity_embed_dim, n_actions_no_attack)
 
+        if getattr(args, "special_token", False):
+            self.enemy_start = nn.Parameter(th.randn(1, 1, self.entity_embed_dim))
+            self.enemy_end   = nn.Parameter(th.randn(1, 1, self.entity_embed_dim))
+            self.ally_start  = nn.Parameter(th.randn(1, 1, self.entity_embed_dim))
+            self.ally_end    = nn.Parameter(th.randn(1, 1, self.entity_embed_dim))
 
             
 
@@ -100,7 +105,18 @@ class UPDeTAgent(nn.Module):
 
         history_hidden = hidden_state
         
-        total_hidden = th.cat([own_hidden, enemy_hidden, ally_hidden, history_hidden], dim=1)
+        if getattr(self.args, "special_token", False):
+            B = own_hidden.size(0) 
+            e_start = self.enemy_start.expand(B, 1, -1)
+            e_end   = self.enemy_end.expand(B, 1, -1)
+            a_start = self.ally_start.expand(B, 1, -1)
+            a_end   = self.ally_end.expand(B, 1, -1)
+            total_hidden = th.cat([own_hidden, 
+            e_start, enemy_hidden, e_end,
+            a_start, ally_hidden, a_end,
+            history_hidden], dim=1)
+        else:
+            total_hidden = th.cat([own_hidden, enemy_hidden, ally_hidden, history_hidden], dim=1)
         
         if getattr(self.args, "attention_heatmap", False):
             
@@ -122,7 +138,20 @@ class UPDeTAgent(nn.Module):
                 col_prob = (th.rand(hb, ht - 2, device=own_obs.device) < token_dropout)
                 col_mask = th.zeros(hb, ht, dtype=th.bool, device=own_obs.device)
                 col_mask[:, 1:ht - 1] = col_prob
+                if getattr(self.args, "special_token", False):
+                    n_enemy = enemy_feats.size(0)
+                    n_ally = ally_feats.size(0)
 
+                    e_start_idx = 1
+                    enemy_end_idx = 2 + n_enemy
+                    a_start_idx = enemy_end_idx + 1
+                    ally_end_idx = a_start_idx + 1 + n_ally  # [A_END]
+                    special_indices = [e_start_idx, enemy_end_idx, a_start_idx, ally_end_idx]
+
+                    for idx in special_indices:
+                        if 0 <= idx < ht:
+                            col_mask[:, idx] = False
+                
                 mask_condition = data_actions_flat > 5
                 selected_idx = th.arange(hb, device=own_obs.device)[mask_condition]
                 selected_cols = data_actions_flat[mask_condition] - 5
@@ -141,7 +170,11 @@ class UPDeTAgent(nn.Module):
 
         q_all = self.q_skill(outputs)
         q_base = q_all[:, 0, :]
-        q_attack = th.mean(q_all[:, 1:enemy_feats.size(0)+1, :], -1)
+        if getattr(self.args, "special_token", False):
+            q_attack = th.mean(q_all[:, 2:enemy_feats.size(0)+2, :], -1)
+        else:
+            q_attack = th.mean(q_all[:, 1:enemy_feats.size(0)+1, :], -1)
+        # q_attack = th.mean(q_all[:, 1:enemy_feats.size(0)+1, :], -1)
         q = th.cat([q_base, q_attack], dim=-1)
 
         if task_decomposer.n_actions_no_attack == task_decomposer.n_actions:
