@@ -23,7 +23,14 @@ def load_scenario(map_name, **kwargs):
 
 class SMACv2Wrapper(MultiAgentEnv):
     def __init__(self, map_name, seed, **kwargs):
+        self.scenario_name=map_name
         self.env = load_scenario(map_name, seed=seed, **kwargs)
+        self.episode_limit = self.env.episode_limit
+
+    def _build_env(self):
+        seed = self.env._seed  # 또는 생성자에서 저장해 두기
+        self.env.close()
+        self.env = load_scenario(self.scenario_name, seed=seed)
         self.episode_limit = self.env.episode_limit
 
     def step(self, actions):
@@ -67,6 +74,8 @@ class SMACv2Wrapper(MultiAgentEnv):
         """Returns initial observations and info"""
         if seed is not None:
             self.env.seed(seed)
+        res = self.env.reset()
+        self._build_env()
         res = self.env.reset()
         if res is None:
             logging.warning(
