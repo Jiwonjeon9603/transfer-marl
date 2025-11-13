@@ -75,8 +75,6 @@ class SMACv2Wrapper(MultiAgentEnv):
         if seed is not None:
             self.env.seed(seed)
         res = self.env.reset()
-        self._build_env()
-        res = self.env.reset()
         if res is None:
             logging.warning(
                 "[SMACv2Wrapper] env.reset() returned None. "
