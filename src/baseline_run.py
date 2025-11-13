@@ -18,6 +18,8 @@ from components.transforms import OneHot
 
 import numpy as np
 
+import wandb
+import uuid
 
 def run(_run, _config, _log):
     # check args sanity
@@ -51,6 +53,18 @@ def run(_run, _config, _log):
 
     # sacred is on by default
     logger.setup_sacred(_run)
+    wandb_name = f"agent={args.name}"
+    _config["job"] = _config["name"]
+    # _config = {k: str(v) for k, v in _config.items()}
+    wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
+    # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
+    wandb.init(
+        project="MTMA-Baseline",
+        group=_config["task"],
+        name=wandb_name,
+        config=_config,
+        id=str(uuid.uuid4()),
+    )
 
     # Run and train
     run_sequential(args=args, logger=logger)
@@ -257,6 +271,16 @@ def train_sequential(
             last_log_T = t_env
             logger.log_stat("episode", episode, t_env)
             logger.print_recent_stats()
+            
+            wandb.log(
+                {
+                    "time step": t_env / (len(train_tasks)),
+                    **{
+                        f"{k}": v[-1][1]
+                        for k, v in logger.stats.items()
+                    },
+                }
+            )
 
 
 
@@ -358,7 +382,7 @@ def run_sequential(args, logger):
         task2runner,
         task2offlinedata,
     )
-
+    wandb.finish()
     # save the final model
     if main_args.save_model:
         save_path = os.path.join(main_args.save_dir, str(main_args.t_max))

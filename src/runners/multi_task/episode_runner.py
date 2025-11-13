@@ -1,4 +1,5 @@
 from envs import REGISTRY as env_REGISTRY
+from envs import register_smac, register_smacv2
 from functools import partial
 from components.episode_buffer import EpisodeBatch
 import numpy as np
@@ -12,7 +13,10 @@ class EpisodeRunner:
         self.task = task
         self.batch_size = self.args.batch_size_run
         assert self.batch_size == 1
-
+        if self.args.env == "sc2":
+            register_smac()
+        elif self.args.env == "sc2v2":
+            register_smacv2()
         self.env = env_REGISTRY[self.args.env](**self.args.env_args)
         self.episode_limit = self.env.episode_limit
         self.t = 0
@@ -67,7 +71,8 @@ class EpisodeRunner:
             # Receive the actions for each agent at this timestep in a batch of size 1
             actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, task=self.task, test_mode=test_mode)
 
-            reward, terminated, env_info = self.env.step(actions[0])
+            _, reward, terminated, truncated, env_info = self.env.step(actions[0])
+            terminated = terminated or truncated
             episode_return += reward
 
             post_transition_data = {

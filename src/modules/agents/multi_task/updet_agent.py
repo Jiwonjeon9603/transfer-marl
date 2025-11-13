@@ -47,8 +47,6 @@ class UPDeTAgent(nn.Module):
 
         self.q_skill = nn.Linear(self.entity_embed_dim, n_actions_no_attack)
 
-        if self.args.gru_history or self.args.hier_history:
-            self.rnn = nn.GRUCell(args.entity_embed_dim, args.entity_embed_dim)
 
             
 

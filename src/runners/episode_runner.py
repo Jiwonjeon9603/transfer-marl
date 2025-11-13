@@ -13,7 +13,6 @@ class EpisodeRunner:
         self.logger = logger
         self.batch_size = self.args.batch_size_run
         assert self.batch_size == 1
-
         if self.args.env == "sc2":
             register_smac()
         elif self.args.env == "sc2v2":
@@ -78,6 +77,7 @@ class EpisodeRunner:
             actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, test_mode=test_mode)
 
             _, reward, terminated, truncated, env_info = self.env.step(actions[0])
+            terminated = terminated or truncated
             episode_return += reward
 
             post_transition_data = {
