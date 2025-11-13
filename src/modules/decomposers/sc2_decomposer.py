@@ -1,6 +1,15 @@
-from smac.env.multiagentenv import MultiAgentEnv
-from smac.env.starcraft2.maps import get_map_params
+# # from smac.env.starcraft2.maps import get_map_params
+# try:
+#     from smac.env.starcraft2.maps import get_map_params as smac_get_map_params
+# except ImportError:
+#     smac_get_map_params = None
 
+# try:
+#     from smacv2.env.starcraft2.maps import get_map_params as smacv2_get_map_params
+# except ImportError:
+#     smacv2_get_map_params = None
+    
+    
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
@@ -51,8 +60,32 @@ class Direction(enum.IntEnum):
 
 class SC2Decomposer:
     def __init__(self, args):
+        env_name = getattr(args, "env", "sc2")  # 기본값은 smac v1
+
         # Load map params
         self.map_name = args.env_args["map_name"]
+
+        if env_name == "sc2v2":
+            # SMACv2 branch
+            try:
+                from smacv2.env.starcraft2.maps import get_map_params
+            except ImportError:
+                raise ImportError(
+                    "env='sc2v2' selected but smacv2 is not installed.\n"
+                    "Install with: pip install 'git+https://github.com/oxwhirl/smacv2.git'"
+                )
+        else:
+            # SMAC (v1) branch
+            try:
+                from smac.env.starcraft2.maps import get_map_params
+            except ImportError:
+                raise ImportError(
+                    "env='sc2' selected but smac is not installed.\n"
+                    "Install with: pip install 'git+https://github.com/oxwhirl/smac.git'"
+                )
+
+        # Load map params
+        # self.map_name = args.env_args["map_name"]
         map_params = get_map_params(self.map_name)
         self.n_agents = map_params["n_agents"]
         self.n_enemies = map_params["n_enemies"]
@@ -160,6 +193,29 @@ class SC2Decomposer:
         timestep_number_state = state_input[:, :, base:base+self.timestep_number_state_dim]        
 
         return ally_states, enemy_states, last_action_states, timestep_number_state
+
+    def decompose_bt_obs(self, obs_input):
+        """
+        obs_input: env_obs + last_action + agent_id
+        env_obs = [move_feats, enemy_feats, ally_feats, own_feats]
+        """
+        
+        # extract move feats
+        move_feats = obs_input[:, :, :, :self.move_feats]
+        # extract enemy_feats
+        base = self.move_feats
+        enemy_feats = [obs_input[:, :, :, base + i * self.obs_nf_en:base + (i + 1) * self.obs_nf_en] for i in range(self.n_enemies)]
+        # extract ally_feats
+        base += self.obs_nf_en * self.n_enemies
+        ally_feats = [obs_input[:, :, :, base + i * self.obs_nf_al:base + (i + 1) * self.obs_nf_al] for i in range(self.n_agents - 1)]
+        # extract own feats
+        base += self.obs_nf_al * (self.n_agents - 1)
+        own_feats = obs_input[:, :, :, base:base + self.own_feats]
+      
+        # own
+        own_obs = th.cat([move_feats, own_feats], dim=-1)
+        
+        return own_obs, enemy_feats, ally_feats
 
     def decompose_obs(self, obs_input):
         """

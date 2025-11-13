@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 
 # This multi-agent controller shares parameters between agents
-class UPDeTMAC:
+class BootMAC:
     def __init__(self, train_tasks, task2scheme, task2args, main_args):
         # set some task-specific attributes
         self.train_tasks = train_tasks
@@ -40,9 +40,6 @@ class UPDeTMAC:
         self.hidden_states = None
         self.hidden_states_enc = None
         self.hidden_states_dec = None
-        self.skill = None
-        self.skill_dim = main_args.skill_dim
-        self.c_step = main_args.c_step
 
     def select_actions(self, ep_batch, t_ep, t_env, task, bs=slice(None), test_mode=False):
         # Only select actions for the selected batch elements in bs
@@ -52,6 +49,18 @@ class UPDeTMAC:
                                                             test_mode=test_mode)
         return chosen_actions
 
+    def forward_gen(self, ep_batch, task, token_dropout=0, test_mode=False):
+        st = ep_batch["state"]
+        # bt, tt = st.shape[0], st.shape[1]
+        act = ep_batch["actions_onehot"]
+        rew = ep_batch["reward"]
+        obs = ep_batch["obs"]
+        obs = self._build_batch_obs(ep_batch, task)
+        boot_traj = self.agent.forward_gen(st, obs, act, rew, task)
+        
+    
+    
+    
     def forward(self, ep_batch, t, task, token_dropout=0, test_mode=False):
         agent_inputs = self._build_inputs(ep_batch, t, task)
         avail_actions = ep_batch["avail_actions"][:, t]
@@ -163,6 +172,26 @@ class UPDeTMAC:
             )
 
         inputs = th.cat([x.reshape(bs * n_agents, -1) for x in inputs], dim=1)
+        return inputs
+
+    def _build_batch_obs(self, batch, task):
+        # Assumes homogenous agents with flat observations.
+        # Other MACs might want to e.g. delegate building inputs to each agent
+        bs = batch.batch_size
+        inputs = []
+        inputs.append(batch["obs"])
+        # get args, n_agents for this specific task
+        task_args, n_agents = self.task2args[task], self.task2n_agents[task]
+        if task_args.obs_last_action:
+            zero_act = th.zeros_like(batch["actions_onehot"][:, 0]).unsqueeze(dim=1)
+            prev_actions = batch["actions_onehot"][:, :-1]
+            inputs.append(th.cat([zero_act, prev_actions], dim=1))
+        if task_args.obs_agent_id:
+            inputs.append(
+                th.eye(n_agents, device=batch.device).unsqueeze(0).unsqueeze(1).expand(bs, batch["obs"].shape[1], -1, -1)
+            )
+
+        inputs = th.cat(inputs, dim=-1)
         return inputs
 
     def _get_input_shape(self):

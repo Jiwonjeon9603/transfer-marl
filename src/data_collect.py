@@ -52,7 +52,7 @@ def run(_run, _config, _log):
         raise ValueError("Dataset quality {} not supported!".format(args.offline_data_quality))
 
     quality = args.offline_data_quality.lower()
-    wandb.init(project="Transfer-Collect_data", name=args.algo_name + "_" + args.map_name + "_" + quality)
+    wandb.init(project="SMACV2", name=args.algo_name + "_" + args.env_args['map_name'] + "_" + quality)
 
     # setup loggers
     logger = Logger(_log)

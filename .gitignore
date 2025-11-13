@@ -191,7 +191,4 @@ smac/
 install_*.sh
 run*.sh
 
-
-/attention*
 /results*
-Attention*

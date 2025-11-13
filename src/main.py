@@ -39,7 +39,7 @@ def my_main(_run, _config, _log):
     config["env_args"]["seed"] = config["seed"]
 
     ########## For debugging ###########
-    config["run_file"] = "baseline_run"
+    # config["run_file"] = "baseline_run"
     ####################################
 
     # run the framework
@@ -158,6 +158,40 @@ if __name__ == "__main__":
 
     config_dict = recursive_dict_update(config_dict, _get_argv_config(params))
 
+    ########## For debugging ##################
+    # with open(
+    #     os.path.join(os.path.dirname(__file__), "config/envs", "sc2_offline.yaml"), "r"
+    # ) as f:
+    #     try:
+    #         env_config = yaml.full_load(f)
+    #     except yaml.YAMLError as exc:
+    #         assert False, "default.yaml error: {}".format(exc)
+
+    # with open(
+    #     os.path.join(os.path.dirname(__file__), "config/algs", "stairs.yaml"), "r"
+    # ) as f:
+    #     try:
+    #         alg_config = yaml.full_load(f)
+    #     except yaml.YAMLError as exc:
+    #         assert False, "default.yaml error: {}".format(exc)
+
+    # with open(
+    #     os.path.join(
+    #         os.path.dirname(__file__), "config/tasks", "toy0.yaml"
+    #     ),
+    #     "r",
+    # ) as f:
+    #     try:
+    #         task_config = yaml.full_load(f)
+    #     except yaml.YAMLError as exc:
+    #         assert False, "default.yaml error: {}".format(exc)
+
+    # config_dict = recursive_dict_update(config_dict, alg_config)
+    # config_dict = recursive_dict_update(config_dict, env_config)
+    # config_dict = recursive_dict_update(config_dict, task_config)
+
+    ##########################################################
+
     # overwrite map_name config
     if "map_name" in config_dict:
         config_dict["env_args"]["map_name"] = config_dict["map_name"]
@@ -177,17 +211,23 @@ if __name__ == "__main__":
     if config_dict["evaluate"]:
         results_path = os.path.join(results_path, "evaluate")
 
-    results_save_dir1 = os.path.join(
-        results_path,
-        config_dict["task"],
-        config_dict["name"] + config_dict["remark"],
-        # unique_token,
-    )
+    # results_save_dir1 = os.path.join(
+    #     results_path,
+    #     config_dict["task"],
+    #     config_dict["name"] + config_dict["remark"],
+    #     # unique_token,
+    # )
 
+    # results_save_dir = os.path.join(
+    #     results_save_dir1,
+    #     "dropout_" + str(config_dict["token_dropout"])
+    # )
+    
     results_save_dir = os.path.join(
-        results_save_dir1,
-        "dropout_" + str(config_dict["token_dropout"]),
-        "high_step_" + str(config_dict["high_step"])
+        results_path, config_dict['run_file'], 
+        config_dict['env'] + os.sep + config_dict['env_args']['map_name'] if config_dict['env'].startswith('sc2') else config_dict['env'], 
+        config_dict['name'] + config_dict['remark'],
+        unique_token
     )
     
     os.makedirs(results_save_dir, exist_ok=True)
