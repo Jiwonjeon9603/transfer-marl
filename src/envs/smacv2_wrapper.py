@@ -2,7 +2,7 @@ from pathlib import Path
 import yaml
 
 from smacv2.env.starcraft2.wrapper import StarCraftCapabilityEnvWrapper
-
+import logging
 from .multiagentenv import MultiAgentEnv
 
 
@@ -67,7 +67,25 @@ class SMACv2Wrapper(MultiAgentEnv):
         """Returns initial observations and info"""
         if seed is not None:
             self.env.seed(seed)
-        obss, _ = self.env.reset()
+        res = self.env.reset()
+        if res is None:
+            logging.warning(
+                "[SMACv2Wrapper] env.reset() returned None. "
+                "Rebuilding underlying SMACv2 env and trying once more."
+            )
+            self._build_env()
+            res = self.env.reset()
+            if res is None:
+                # Give up explicitly instead of failing with a TypeError later
+                raise RuntimeError(
+                    "[SMACv2Wrapper] env.reset() returned None twice. "
+                    "Likely SC2 / SMACv2 installation or map issue."
+                )
+        if isinstance(res, tuple):
+            obss = res[0]
+        else:
+            obss = res
+        # obss, _ = self.env.reset()
         return obss, {}
 
     def render(self):
