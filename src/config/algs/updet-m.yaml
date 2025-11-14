@@ -49,6 +49,6 @@ type_conservative: "norm"
 
 head: 1
 depth: 1
-
+token_dropout: 0
 bc: False
 algo_name: "Updet-m"

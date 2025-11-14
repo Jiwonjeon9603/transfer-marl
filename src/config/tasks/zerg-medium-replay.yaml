@@ -1,0 +1,25 @@
+# ----- marine battle setting config -----
+
+# get env information
+env: "sc2v2"
+# get task information
+task: "zerg-medium-replay"
+# define train tasks and test tasks
+train_tasks: ["zerg_3_vs_3", "zerg_5_vs_5", "zerg_10_vs_10"]
+train_tasks_data_quality: {
+    "zerg_3_vs_3": "medium-replay",
+    "zerg_5_vs_5": "medium-replay",
+    "zerg_10_vs_10": "medium-replay",
+}
+
+test_tasks: ["zerg_3_vs_3", "zerg_4_vs_4", "zerg_5_vs_5", "zerg_6_vs_6", "zerg_7_vs_7", "zerg_8_vs_8", "zerg_9_vs_9", "zerg_10_vs_10", "zerg_11_vs_11", "zerg_12_vs_12"]
+test_tasks_data_quality: {
+}
+
+# define additional pretrain tasks
+pretrain_tasks: ["zerg_3_vs_3", "zerg_5_vs_5", "zerg_10_vs_10"]
+pretrain_tasks_data_quality: {
+    "zerg_3_vs_3": "medium-replay",
+    "zerg_5_vs_5": "medium-replay",
+    "zerg_10_vs_10": "medium-replay",
+}

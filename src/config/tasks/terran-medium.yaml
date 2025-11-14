@@ -1,0 +1,25 @@
+# ----- marine battle setting config -----
+
+# get env information
+env: "sc2v2"
+# get task information
+task: "terran-medium"
+# define train tasks and test tasks
+train_tasks: ["terran_3_vs_3", "terran_5_vs_5", "terran_10_vs_10"]
+train_tasks_data_quality: {
+    "terran_3_vs_3": "medium",
+    "terran_5_vs_5": "medium",
+    "terran_10_vs_10": "medium",
+}
+
+test_tasks: ["terran_3_vs_3", "terran_4_vs_4", "terran_5_vs_5", "terran_6_vs_6", "terran_7_vs_7", "terran_8_vs_8", "terran_9_vs_9", "terran_10_vs_10", "terran_11_vs_11", "terran_12_vs_12"]
+test_tasks_data_quality: {
+}
+
+# define additional pretrain tasks
+pretrain_tasks: ["terran_3_vs_3", "terran_5_vs_5", "terran_10_vs_10"]
+pretrain_tasks_data_quality: {
+    "terran_3_vs_3": "medium",
+    "terran_5_vs_5": "medium",
+    "terran_10_vs_10": "medium",
+}
