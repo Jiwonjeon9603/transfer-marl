@@ -58,21 +58,13 @@ def run(_run, _config, _log):
     # sacred is on by default
     logger.setup_sacred(_run)
 
-    if args.hier_history:
-        detail = "HierHistory"
-        detail += "_" + str(args.high_step)
-    elif args.no_history:
-        detail = "NoHistory"
-    elif args.gru_history:
-        detail = "GRUHistory"
-    else:
-        detail = "BasicHistory"
-
-    wandb_name = f"agent={args.name}-mac={args.mac}-learner={args.learner}-mixer={args.mixer}-hier={detail}"
+    wandb_name = f"agent={args.name}"
     _config["job"] = _config["name"]
-    wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880")
+    # _config = {k: str(v) for k, v in _config.items()}
+    wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
+    # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
     wandb.init(
-        project="OffMTMARL",
+        project="MTMA-SMACV2",
         group=_config["task"],
         name=wandb_name,
         config=_config,
