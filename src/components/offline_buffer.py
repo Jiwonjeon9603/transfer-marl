@@ -136,6 +136,22 @@ class OfflineBufferH5():
         batch_sample = OfflineSample(episode_data, batch_size, max_ep_t, device=self.device)
         return batch_sample
 
+    def save_to_npy(self, out_dir, prefix=""):
+        """
+        현재 버퍼(self.data)에 들어있는 모든 키를
+        각각 <prefix><key>.npy 로 저장한다.
+
+        out_dir : 저장할 디렉토리 경로
+        prefix  : 파일 이름 앞에 붙일 문자열 (옵션)
+        """
+        from pathlib import Path  
+        out_dir = Path(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        for k, v in self.data.items():
+            fname = f"{prefix}{k}.npy"
+            np.save(out_dir / fname, v)
+            print(f"[OfflineBufferH5] saved {k} -> {out_dir / fname}")
 
 class OfflineBufferPickle():
     def __init__(self, datapaths, offline_data_size=2000, device="cpu", random_sample=True):
@@ -247,6 +263,9 @@ class OfflineBuffer():
 
     def fix_sample(self, batch_size):
         return self.buffer.fix_sample(batch_size)
+    
+    def save_to_npy(self, out_dir, prefix=""):
+        return self.buffer.save_to_npy(out_dir, prefix)
 
 
 class DataSaver():

@@ -192,3 +192,4 @@ install_*.sh
 run*.sh
 
 /results*
+SMACV2_Dataset/

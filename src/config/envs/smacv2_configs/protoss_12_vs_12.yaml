@@ -29,8 +29,8 @@ env_args:
   obs_own_pos: True
   num_fov_actions: 12
   capability_config:
-    n_units: 20
-    n_enemies: 23
+    n_units: 12
+    n_enemies: 12
     team_gen:
       dist_type: "weighted_teams"
       unit_types: 

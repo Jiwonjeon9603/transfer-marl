@@ -59,7 +59,7 @@ def run(_run, _config, _log):
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
     # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
     wandb.init(
-        project="MTMA-Baseline",
+        project="test-MTMA-Baseline",
         group=_config["task"],
         name=wandb_name,
         config=_config,
@@ -386,6 +386,7 @@ def run_sequential(args, logger):
             offline_data_size=args.offline_data_size,
             random_sample=args.offline_data_shuffle,
         )
+        task2offlinedata[task].save_to_npy(f"SMACV2_Dataset/medium/{task}")
 
     logger.console_logger.info(
         "Beginning multi-task offline training with {} timesteps for each task".format(

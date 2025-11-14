@@ -1,0 +1,24 @@
+# ----- marine battle setting config -----
+
+# get env information
+env: "sc2v2"
+# get task information
+task: "zerg-medium"
+# define train tasks and test tasks
+train_tasks: ["zerg_3_vs_3", "zerg_5_vs_5", "zerg_10_vs_10"]
+train_tasks_data_quality: {
+    "zerg_3_vs_3": "medium",
+    "zerg_5_vs_5": "medium",
+    "zerg_10_vs_10": "medium"
+}
+
+test_tasks: ["protoss_3_vs_3"]
+# test_tasks: ["protoss_3_vs_3", "protoss_4_vs_4", "protoss_5_vs_5", "protoss_6_vs_6", "protoss_7_vs_7", "protoss_8_vs_8", "protoss_9_vs_9", "protoss_10_vs_10"]
+test_tasks_data_quality: {
+}
+
+# define additional pretrain tasks
+pretrain_tasks: ["protoss_3_vs_3"]
+pretrain_tasks_data_quality: {
+    "protoss_3_vs_3": "medium",
+}

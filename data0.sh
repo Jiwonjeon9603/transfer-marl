@@ -1,0 +1,2 @@
+CUDA_VISIBLE_DEVICES=0 python src/main.py --data_collect --config=qmix --env-config=sc2v2_collect --offline_data_quality=medium \
+ --num_episodes_collected=2000 --map_name=terran_10_vs_10 --save_replay_buffer=True --stop_winrate=0.4 \
