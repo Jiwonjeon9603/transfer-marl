@@ -7,9 +7,9 @@ task: "zerg-medium"
 # define train tasks and test tasks
 train_tasks: ["zerg_3_vs_3", "zerg_5_vs_5", "zerg_10_vs_10"]
 train_tasks_data_quality: {
-    "zerg_3_vs_3": "medium",
-    "zerg_5_vs_5": "medium",
-    "zerg_10_vs_10": "medium"
+    "zerg_3_vs_3": "medium-replay",
+    "zerg_5_vs_5": "medium-replay",
+    "zerg_10_vs_10": "medium-replay"
 }
 
 test_tasks: ["protoss_3_vs_3"]

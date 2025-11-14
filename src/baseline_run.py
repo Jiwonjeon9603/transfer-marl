@@ -59,26 +59,7 @@ def run(_run, _config, _log):
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
     # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
     wandb.init(
-        project="test-MTMA-Baseline",
-        group=_config["task"],
-        name=wandb_name,
-        config=_config,
-        id=str(uuid.uuid4()),
-    )
-
-    if getattr(args, "s0_filter", False):
-        wandb_name = f"agent={args.algo_name}-s0_thresh={str(args.s0_filter_threshold)}-s0_topk={str(args.s0_filter_topk)}"
-    else:
-        if args.algo_name == "MoE":
-            if args.multi_head:
-                args.algo_name = args.algo_name + "_MultiHead"
-        wandb_name = f"agent={args.algo_name}"
-    _config["job"] = _config["name"]
-    # _config = {k: str(v) for k, v in _config.items()}
-    wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
-    # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
-    wandb.init(
-        project="MTMA-Baseline",
+        project="MTMA-SMACV2",
         group=_config["task"],
         name=wandb_name,
         config=_config,
@@ -386,7 +367,7 @@ def run_sequential(args, logger):
             offline_data_size=args.offline_data_size,
             random_sample=args.offline_data_shuffle,
         )
-        task2offlinedata[task].save_to_npy(f"SMACV2_Dataset/medium/{task}")
+        # task2offlinedata[task].save_to_npy(f"SMACV2_Dataset/medium-replay/{task}")
 
     logger.console_logger.info(
         "Beginning multi-task offline training with {} timesteps for each task".format(
