@@ -316,8 +316,6 @@ def train_sequential(
             last_log_T = t_env
             logger.log_stat("episode", episode, t_env)
             logger.print_recent_stats()
-            max_log_len = max([len(v) for k, v in logger.stats.items()])
-
             wandb.log(
                 {
                     "time step": t_env / (len(train_tasks)),
@@ -449,6 +447,7 @@ def run_sequential(args, logger):
             pretrain=True,
             test_task2offlinedata=test_task2offlinedata,
         )
+        wandb.finish()
         logger.console_logger.info(f"Finished pretraining")
         test_task2offlinedata = None  # free memory
 
