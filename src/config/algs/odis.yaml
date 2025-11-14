@@ -38,7 +38,7 @@ pretrain_steps: 15000
 pretrain: True
 
 head: 1
-depth: 2
+depth: 1
 
 # params about observation decomposition
 id_length: 4
