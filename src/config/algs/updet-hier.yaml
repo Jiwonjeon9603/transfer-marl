@@ -48,11 +48,11 @@ pretrain: True
 type_conservative: "norm"
 
 head: 1
-depth: 2
+depth: 1
 
-token_dropout: 0.1
+token_dropout: 0
 
-bc: True
+bc: False
 
 attention_heatmap: False
 heatmap_batch_indices: [0]
@@ -62,6 +62,6 @@ heatmap_num_plots: 10
 gru_history: False
 no_history: False
 hier_history: True
-high_step: 5
+high_step: 3
 
 algo_name: "Hier_Reasoning"

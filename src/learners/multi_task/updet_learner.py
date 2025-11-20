@@ -263,7 +263,7 @@ class UPDeTLearner:
         ):
             self.logger.log_stat(f"{task}/loss", loss.item(), t_env)
             self.logger.log_stat(f"{task}/td_loss", td_loss.item(), t_env)
-            self.logger.log_stat(f"{task}/bc_loss", bc_loss.item(), t_env)
+            # self.logger.log_stat(f"{task}/bc_loss", bc_loss.item(), t_env)
             self.logger.log_stat(f"{task}/grad_norm", grad_norm, t_env)
             mask_elems = mask.sum().item()
             self.logger.log_stat(
