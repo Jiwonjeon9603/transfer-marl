@@ -348,7 +348,7 @@ def train_sequential(
 
             wandb.log(
                 {
-                    "time step": t_env / (len(train_tasks)),
+                    "time step": t_env,
                     **{
                         f"{k}": v[-1][1]
                         for k, v in logger.stats.items()
@@ -481,7 +481,7 @@ def train_online(
 
             wandb.log(
                 {
-                    "time step": t_env / (len(online_tasks)) + main_args.offline_tmax,
+                    "time step": t_env + main_args.offline_tmax,
                     **{
                         f"{k}": v[-1][1]
                         for k, v in logger.stats.items()
