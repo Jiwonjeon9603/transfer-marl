@@ -142,15 +142,24 @@ def init_tasks(task_list, main_args, logger, buffer_size):
         preprocess = {
             "actions": ("actions_onehot", [OneHot(out_dim=task_args.n_actions)])
         }
-
-        task2buffer[task] = ReplayBuffer(
-            scheme,
-            groups,
-            buffer_size,
-            env_info["episode_limit"] + 1,
-            preprocess=preprocess,
-            device="cpu" if task_args.buffer_cpu_only else task_args.device,
-        )
+        if task in main_args.onlien_train_tasks:
+            task2buffer[task] = ReplayBuffer(
+                scheme,
+                groups,
+                buffer_size,
+                env_info["episode_limit"] + 1,
+                preprocess=preprocess,
+                device="cpu" if task_args.buffer_cpu_only else task_args.device,
+            )
+        else:
+            task2buffer[task] = ReplayBuffer(
+                scheme,
+                groups,
+                1,
+                env_info["episode_limit"] + 1,
+                preprocess=preprocess,
+                device="cpu" if task_args.buffer_cpu_only else task_args.device,
+            )
 
         # store task information
         task2scheme[task], task2groups[task], task2preprocess[task] = (
@@ -355,7 +364,7 @@ def train_online(
     learner,
     args,
     episode_runner,
-    parallel_runner,
+    # parallel_runner,
     onlinedata,
     offlinedata,
     t_start=0,
@@ -391,7 +400,7 @@ def train_online(
         # train each task
         for task in online_tasks:
             
-            runner = parallel_runner[task]
+            runner = episode_runner[task]
             buffer = onlinedata[task]
 
             runner.t_env = t_env
@@ -594,7 +603,7 @@ def run_sequential(args, logger):
     task2args_online, task2runner_online, task2buffer_online, task2scheme_online, task2groups_online, task2preprocess_online = (
         init_tasks(all_tasks, main_args, logger, buffer_size=main_args.buffer_size)
     )
-
+    
     for task in all_tasks:
         task2runner_online[task].setup(
             scheme=task2scheme_online[task],
@@ -603,30 +612,29 @@ def run_sequential(args, logger):
             mac=mac,   # 기존 mac 그대로
         )
 
-
-
-
     logger.console_logger.info(
         f"Beginning multi-task online training with {main_args.online_tmax} timesteps"
     )
 
-    _, parallel_runner , _, _, _, _= init_parallel_runner(all_tasks, main_args, logger, buffer_size=main_args.buffer_size)
+    # _, parallel_runner , _, _, _, _= init_parallel_runner(all_tasks, main_args, logger, buffer_size=main_args.online_buffer_size)
 
-    for task in all_tasks:
-        parallel_runner[task].setup(
-            scheme=task2scheme_online[task],
-            groups=task2groups_online[task],
-            preprocess=task2preprocess_online[task],
-            mac=mac,   # 기존 mac 그대로
-        )
-
+    # for task in all_tasks:
+    #     parallel_runner[task].setup(
+    #         scheme=task2scheme_online[task],
+    #         groups=task2groups_online[task],
+    #         preprocess=task2preprocess_online[task],
+    #         mac=mac,   # 기존 mac 그대로
+    #     )
+    for task in args.test_tasks:
+        task2runner[task].close_env()
+        
     train_online(
         main_args,
         logger,
         learner,
         task2args_online,
         task2runner_online,
-        parallel_runner,
+        # parallel_runner,
         task2buffer_online,   # ★ online replay
         task2offlinedata,
         t_start=main_args.offline_tmax,
@@ -642,7 +650,7 @@ def run_sequential(args, logger):
         learner.save_models(save_path)
 
     for task in args.test_tasks:
-        task2runner[task].close_env()
+        task2runner_online[task].close_env()
     logger.console_logger.info(f"Finished Training")
 
 
