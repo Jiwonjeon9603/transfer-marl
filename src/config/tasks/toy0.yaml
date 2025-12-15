@@ -11,7 +11,7 @@ train_tasks_data_quality: {
     "5m_vs_6m": "medium"
 }
 
-test_tasks: ["3m", "4m", "5m"]
+test_tasks: ["3m", "5m_vs_6m"]
 test_tasks_data_quality: {
 }
 

@@ -180,7 +180,7 @@ if __name__ == "__main__":
 
     with open(
         os.path.join(
-            os.path.dirname(__file__), "config/tasks", "toy0.yaml"
+            os.path.dirname(__file__), "config/tasks", "marine-hard-medium-o2o-hard.yaml"
         ),
         "r",
     ) as f:

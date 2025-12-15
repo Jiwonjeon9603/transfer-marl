@@ -15,7 +15,7 @@ class ParallelRunner:
         self.args = args
         self.logger = logger
         self.task = task
-        self.batch_size = self.args.batch_size_run
+        self.batch_size = 32
 
         # Make subprocesses for the envs
         self.parent_conns, self.worker_conns = zip(*[Pipe() for _ in range(self.batch_size)])
@@ -66,7 +66,6 @@ class ParallelRunner:
 
     def reset(self):
         self.batch = self.new_batch()
-
         # Reset the envs
         for parent_conn in self.parent_conns:
             parent_conn.send(("reset", None))
@@ -101,13 +100,7 @@ class ParallelRunner:
 
         while True:
 
-            # Pass the entire batch of experiences up till now to the agents
-            # Receive the actions for each agent at this timestep in a batch for each un-terminated env
-            if pretrain_phase:
-                # If pretrain phase, just select action randomly
-                actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=0, task=self.task, bs=envs_not_terminated, test_mode=False)
-            else:
-                actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, task=self.task, bs=envs_not_terminated, test_mode=test_mode)
+            actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, task=self.task, bs=envs_not_terminated, test_mode=test_mode)
         
             cpu_actions = actions.to("cpu").numpy()
 

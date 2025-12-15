@@ -7,7 +7,6 @@ epsilon_anneal_time: 50000
 
 
 runner: "mt_episode"
-data_runner: "mt_parallel"
 
 buffer_size: 5000
 
@@ -55,8 +54,7 @@ bc: True
 
 algo_name: "Updet-bc"
 
-online_togehter: True
-online_half: False
+o2o_dataset: "only_online"
 
 online_tmax: 30000
 offline_tmax: 1000

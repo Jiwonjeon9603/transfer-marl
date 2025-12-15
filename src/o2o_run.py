@@ -56,7 +56,7 @@ def run(_run, _config, _log):
     logger.setup_sacred(_run)
 
 
-    wandb_name = f"agent={args.name}"
+    wandb_name = f"agent={args.name}-o2o-ds={args.o2o_dataset}"
     _config["job"] = _config["name"]
     # _config = {k: str(v) for k, v in _config.items()}
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
@@ -169,6 +169,70 @@ def init_tasks(task_list, main_args, logger, buffer_size):
     )
 
 
+def init_parallel_runner(task_list, main_args, logger, buffer_size):
+    task2args, task2runner, task2buffer = {}, {}, {}
+    task2scheme, task2groups, task2preprocess = {}, {}, {}
+
+    for task in task_list:
+        # define task_args
+        task_args = copy.deepcopy(main_args)
+        task_args.env_args["map_name"] = task
+        task2args[task] = task_args
+
+        task_runner = r_REGISTRY["mt_parallel"](
+            args=task_args, logger=logger, task=task
+        )
+        task2runner[task] = task_runner
+
+        # Set up schemes and groups here
+        env_info = task_runner.get_env_info()
+        for k, v in env_info.items():
+            setattr(task_args, k, v)
+
+        # Default/Base scheme
+        scheme = {
+            "state": {"vshape": env_info["state_shape"]},
+            "obs": {"vshape": env_info["obs_shape"], "group": "agents"},
+            "actions": {"vshape": (1,), "group": "agents", "dtype": th.long},
+            "avail_actions": {
+                "vshape": (env_info["n_actions"],),
+                "group": "agents",
+                "dtype": th.int,
+            },
+            "reward": {"vshape": (1,)},
+            "terminated": {"vshape": (1,), "dtype": th.uint8},
+        }
+        groups = {"agents": task_args.n_agents}
+        preprocess = {
+            "actions": ("actions_onehot", [OneHot(out_dim=task_args.n_actions)])
+        }
+
+        task2buffer[task] = ReplayBuffer(
+            scheme,
+            groups,
+            buffer_size,
+            env_info["episode_limit"] + 1,
+            preprocess=preprocess,
+            device="cpu" if task_args.buffer_cpu_only else task_args.device,
+        )
+
+        # store task information
+        task2scheme[task], task2groups[task], task2preprocess[task] = (
+            scheme,
+            groups,
+            preprocess,
+        )
+
+    return (
+        task2args,
+        task2runner,
+        task2buffer,
+        task2scheme,
+        task2groups,
+        task2preprocess,
+    )
+
+
 def train_sequential(
     train_tasks,
     main_args,
@@ -178,7 +242,6 @@ def train_sequential(
     task2runner,
     task2offlinedata,
     t_start=0,
-    test_task2offlinedata=None,
 ):
     ########## start training ##########
     t_env = t_start
@@ -290,19 +353,20 @@ def train_online(
     main_args,
     logger,
     learner,
-    task2args,
-    task2runner,
-    task2offlinedata,
-    t_start=offline_tmax,
-    test_task2offlinedata=None,
+    args,
+    episode_runner,
+    parallel_runner,
+    onlinedata,
+    offlinedata,
+    t_start=0,
 ):
     ########## start training ##########
     t_env = t_start
     episode = 0  # episode does not matter
-    t_max = main_args.online_tmax + t_start
-    model_save_time = t_start
-    last_test_T = t_start - main_args.test_interval - 1
-    last_log_T = t_start
+    t_max = main_args.online_tmax
+    model_save_time = 0
+    last_test_T = 0
+    last_log_T = 0
     start_time = time.time()
     last_time = start_time
     test_time_total = 0
@@ -312,7 +376,7 @@ def train_online(
     batch_size_train = main_args.batch_size
     batch_size_run = main_args.batch_size_run
 
-    online_tasks = list(main_args.test_tasks)
+    online_tasks = list(main_args.onlien_train_tasks)
 
     # do test before training
     n_test_runs = max(1, main_args.test_nepisode // batch_size_run)
@@ -320,17 +384,18 @@ def train_online(
     test_time_total += time.time() - test_start_time
     update_fn = getattr(learner, "update", None)
 
+    terminated = None
     while t_env < t_max:
         # shuffle tasks
         np.random.shuffle(online_tasks)
         # train each task
         for task in online_tasks:
             
-            runner = task2runner[task]
-            buffer = task2offlinedata[task]
+            runner = parallel_runner[task]
+            buffer = onlinedata[task]
 
             runner.t_env = t_env
-
+            
             episode_batch = runner.run(test_mode=False)
             buffer.insert_episode_batch(episode_batch)
 
@@ -340,42 +405,23 @@ def train_online(
                 max_ep_t = episode_sample.max_t_filled()
                 episode_sample = episode_sample[:, :max_ep_t]
 
-                if episode_sample.device != task2args[task].device:
-                    episode_sample.to(task2args[task].device)
-                
+                if episode_sample.device != args[task].device:
+                    episode_sample.to(args[task].device)
+
                 if callable(update_fn):
                     terminated = learner.train(
-                        episode_sample, t_env / len(train_tasks), episode, task
+                        episode_sample, t_env / len(online_tasks), episode, task
                     )
                 else:
                     terminated = learner.train(episode_sample, t_env, episode, task)
 
-                    if terminated is not None and terminated:
-                        break
+                if terminated is not None and terminated:
+                    break
 
             episode += batch_size_run
 
         t_env += len(online_tasks)
 
-            #########################################################
-        #     episode_sample = task2offlinedata[task].sample(batch_size_train)
-
-        #     if episode_sample.device != task2args[task].device:
-        #         episode_sample.to(task2args[task].device)
-        
-        #     if callable(update_fn):
-        #         terminated = learner.train(
-        #             episode_sample, t_env / len(train_tasks), episode, task
-        #         )
-        #     else:
-        #         terminated = learner.train(episode_sample, t_env, episode, task)
-
-        #     if terminated is not None and terminated:
-        #         break
-
-        #     episode += batch_size_run
-
-        # t_env += len(train_tasks)
         
         if callable(update_fn):
             update_fn()
@@ -392,9 +438,9 @@ def train_online(
 
             with th.no_grad():
                 for task in main_args.test_tasks:
-                    task2runner[task].t_env = t_env
+                    episode_runner[task].t_env = t_env
                     for _ in range(n_test_runs):
-                        task2runner[task].run(test_mode=True)
+                        episode_runner[task].run(test_mode=True)
 
             test_time_total += time.time() - test_start_time
 
@@ -426,7 +472,7 @@ def train_online(
 
             wandb.log(
                 {
-                    "time step": t_env / (len(train_tasks)),
+                    "time step": t_env / (len(online_tasks)) + main_args.offline_tmax,
                     **{
                         f"{k}": v[-1][1]
                         for k, v in logger.stats.items()
@@ -557,9 +603,22 @@ def run_sequential(args, logger):
             mac=mac,   # 기존 mac 그대로
         )
 
+
+
+
     logger.console_logger.info(
         f"Beginning multi-task online training with {main_args.online_tmax} timesteps"
     )
+
+    _, parallel_runner , _, _, _, _= init_parallel_runner(all_tasks, main_args, logger, buffer_size=main_args.buffer_size)
+
+    for task in all_tasks:
+        parallel_runner[task].setup(
+            scheme=task2scheme_online[task],
+            groups=task2groups_online[task],
+            preprocess=task2preprocess_online[task],
+            mac=mac,   # 기존 mac 그대로
+        )
 
     train_online(
         main_args,
@@ -567,7 +626,9 @@ def run_sequential(args, logger):
         learner,
         task2args_online,
         task2runner_online,
+        parallel_runner,
         task2buffer_online,   # ★ online replay
+        task2offlinedata,
         t_start=main_args.offline_tmax,
     )
 
