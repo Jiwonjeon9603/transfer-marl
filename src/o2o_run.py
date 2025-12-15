@@ -59,8 +59,7 @@ def run(_run, _config, _log):
     wandb_name = f"agent={args.name}-o2o-ds={args.o2o_dataset}"
     _config["job"] = _config["name"]
     # _config = {k: str(v) for k, v in _config.items()}
-    import pdb
-    pdb.set_trace()
+
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
     # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
     wandb.init(
