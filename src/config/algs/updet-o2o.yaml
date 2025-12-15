@@ -1,0 +1,62 @@
+
+# use epsilon greedy action selector
+action_selector: "epsilon_greedy"
+epsilon_start: 1.0
+epsilon_finish: 0.05
+epsilon_anneal_time: 50000
+
+
+runner: "mt_episode"
+data_runner: "mt_parallel"
+
+buffer_size: 5000
+
+
+# update the target network every _ steps
+target_update_interval: 80
+
+# use the Q_Learner to train
+agent_output_type: "q"
+learner: "updet_learner_bc"
+double_q: True
+mixer: "mt_qattn"
+mixing_embed_dim: 32
+hypernet_layers: 2
+hypernet_embed: 64
+
+name: "updet-bc"
+
+# agent type
+agent: "mt_updet"
+
+# mac
+mac: "mt_updet_mac"
+
+# params about observation decomposition
+id_length: 4
+max_agent: 15
+
+# params about trans mixing network
+entity_embed_dim: 64
+attn_embed_dim: 8
+
+skill_dim: 5
+c_step: 1
+beta: 0.01
+coef_conservative: 5.0
+type_conservative: "norm"
+
+head: 1
+depth: 2
+
+token_dropout: 0
+
+bc: True
+
+algo_name: "Updet-bc"
+
+online_togehter: True
+online_half: False
+
+online_tmax: 30000
+offline_tmax: 1000

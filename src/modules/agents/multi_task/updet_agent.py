@@ -47,8 +47,6 @@ class UPDeTAgent(nn.Module):
 
         self.q_skill = nn.Linear(self.entity_embed_dim, n_actions_no_attack)
 
-        if self.args.gru_history or self.args.hier_history:
-            self.rnn = nn.GRUCell(args.entity_embed_dim, args.entity_embed_dim)
 
             
 
@@ -100,15 +98,7 @@ class UPDeTAgent(nn.Module):
         # skill_hidden = self.skill_value(skill).unsqueeze(1)
         
 
-        if self.args.gru_history:
-            mean_obses = th.cat([own_hidden, enemy_hidden, ally_hidden], dim=1)
-            mean_obs = mean_obses.mean(dim=1)
-            h_in = hidden_state.view(-1, self.entity_embed_dim)
-            history_hidden = self.rnn(mean_obs, h_in)
-            history_hidden = history_hidden.view(-1, 1, self.entity_embed_dim)
-            h = history_hidden
-        else:
-            history_hidden = hidden_state
+        history_hidden = hidden_state
         
         total_hidden = th.cat([own_hidden, enemy_hidden, ally_hidden, history_hidden], dim=1)
         
@@ -116,11 +106,7 @@ class UPDeTAgent(nn.Module):
             
             hb, ht, hd = total_hidden.size()
             token_mask = th.ones(hb, ht, ht, device=own_obs.device)
-            if self.args.no_history:
-                token_mask[:, -1, :] = 0
-                token_mask[:, :, -1] = 0
-            else:
-                token_mask = None
+            token_mask = None
             heatmap = self.transformer.attention_heatmap(total_hidden, token_mask)
             outputs = self.transformer(total_hidden, token_mask)
             h = outputs[:, -1:, :]
@@ -144,25 +130,13 @@ class UPDeTAgent(nn.Module):
 
                 mask_2d = (~col_mask).float()
                 token_mask = mask_2d.unsqueeze(1) * mask_2d.unsqueeze(2)
-                if self.args.no_history:
-                    token_mask[:, -1, :] = 0
-                    token_mask[:, :, -1] = 0
                 outputs = self.transformer(total_hidden, token_mask)        
             else:
                 outputs = self.transformer(total_hidden, None)
         else:
-            if self.args.no_history:
-                hb, ht, hd = total_hidden.size()
-                token_mask = th.ones(hb, ht, ht, device=own_obs.device)
-                token_mask[:, -1, :] = 0
-                token_mask[:, :, -1] = 0
-                outputs = self.transformer(total_hidden, token_mask)
-            else:
-                outputs = self.transformer(total_hidden, None)
+            outputs = self.transformer(total_hidden, None)
 
-        if not self.args.gru_history:
-            h = outputs[:, -1:, :]
-
+        h = outputs[:, -1:, :]
 
         q_all = self.q_skill(outputs)
         q_base = q_all[:, 0, :]

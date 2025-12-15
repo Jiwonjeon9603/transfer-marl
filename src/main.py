@@ -17,6 +17,7 @@ from run import run as run
 from mto import run as mto
 from baseline_run import run as baseline_run
 from data_collect import run as data_collect
+from o2o_run import run as o2o_run
 
 SETTINGS["CAPTURE_MODE"] = (
     "fd"  # set to "no" if you want to see stdout/stderr in console
@@ -39,7 +40,7 @@ def my_main(_run, _config, _log):
     config["env_args"]["seed"] = config["seed"]
 
     ########## For debugging ###########
-    config["run_file"] = "baseline_run"
+    config["run_file"] = "o2o_run"
     ####################################
 
     # run the framework
@@ -47,6 +48,8 @@ def my_main(_run, _config, _log):
         mto(_run, config, _log)
     elif config["run_file"].startswith("baseline_run"):
         baseline_run(_run, config, _log)
+    elif config["run_file"].startswith("o2o_run"):
+        o2o_run(_run, config, _log)
     elif config["run_file"].startswith("data_collect"):
         data_collect(_run, config, _log)
     else:
@@ -158,6 +161,40 @@ if __name__ == "__main__":
 
     config_dict = recursive_dict_update(config_dict, _get_argv_config(params))
 
+    ######### For debugging ##################
+    with open(
+        os.path.join(os.path.dirname(__file__), "config/envs", "sc2_offline.yaml"), "r"
+    ) as f:
+        try:
+            env_config = yaml.full_load(f)
+        except yaml.YAMLError as exc:
+            assert False, "default.yaml error: {}".format(exc)
+
+    with open(
+        os.path.join(os.path.dirname(__file__), "config/algs", "updet-o2o.yaml"), "r"
+    ) as f:
+        try:
+            alg_config = yaml.full_load(f)
+        except yaml.YAMLError as exc:
+            assert False, "default.yaml error: {}".format(exc)
+
+    with open(
+        os.path.join(
+            os.path.dirname(__file__), "config/tasks", "toy0.yaml"
+        ),
+        "r",
+    ) as f:
+        try:
+            task_config = yaml.full_load(f)
+        except yaml.YAMLError as exc:
+            assert False, "default.yaml error: {}".format(exc)
+
+    config_dict = recursive_dict_update(config_dict, alg_config)
+    config_dict = recursive_dict_update(config_dict, env_config)
+    config_dict = recursive_dict_update(config_dict, task_config)
+
+    #########################################################
+
     # overwrite map_name config
     if "map_name" in config_dict:
         config_dict["env_args"]["map_name"] = config_dict["map_name"]
@@ -186,8 +223,7 @@ if __name__ == "__main__":
 
     results_save_dir = os.path.join(
         results_save_dir1,
-        "dropout_" + str(config_dict["token_dropout"]),
-        "high_step_" + str(config_dict["high_step"])
+        "dropout_" + str(config_dict["token_dropout"])
     )
     
     os.makedirs(results_save_dir, exist_ok=True)

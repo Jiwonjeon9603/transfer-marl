@@ -62,7 +62,7 @@ def run(_run, _config, _log):
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
     # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
     wandb.init(
-        project="MTMA-O2O",
+        project="testMTMA-O2O",
         group=_config["task"],
         name=wandb_name,
         config=_config,
@@ -105,7 +105,7 @@ def evaluate_sequential(main_args, logger, task2runner):
 
 
 
-def init_tasks(task_list, main_args, logger):
+def init_tasks(task_list, main_args, logger, buffer_size):
     task2args, task2runner, task2buffer = {}, {}, {}
     task2scheme, task2groups, task2preprocess = {}, {}, {}
 
@@ -146,7 +146,7 @@ def init_tasks(task_list, main_args, logger):
         task2buffer[task] = ReplayBuffer(
             scheme,
             groups,
-            1,
+            buffer_size,
             env_info["episode_limit"] + 1,
             preprocess=preprocess,
             device="cpu" if task_args.buffer_cpu_only else task_args.device,
@@ -183,7 +183,7 @@ def train_sequential(
     ########## start training ##########
     t_env = t_start
     episode = 0  # episode does not matter
-    t_max = main_args.t_max
+    t_max = main_args.offline_tmax
     model_save_time = 0
     last_test_T = 0
     last_log_T = 0
@@ -263,7 +263,7 @@ def train_sequential(
             t_env - model_save_time >= main_args.save_model_interval
             or model_save_time == 0
         ):
-            save_path = os.path.join(main_args.save_dir, str(t_env))
+            save_path = os.path.join(main_args.save_dir, f"offline_{str(t_env)}")
             os.makedirs(save_path, exist_ok=True)
             logger.console_logger.info("Saving models to {}".format(save_path))
             learner.save_models(save_path)
@@ -285,6 +285,155 @@ def train_sequential(
             )
 
 
+#### 내가 추가한 부분 #### offline -> online으로 넘어가는 training
+def train_online(
+    main_args,
+    logger,
+    learner,
+    task2args,
+    task2runner,
+    task2offlinedata,
+    t_start=offline_tmax,
+    test_task2offlinedata=None,
+):
+    ########## start training ##########
+    t_env = t_start
+    episode = 0  # episode does not matter
+    t_max = main_args.online_tmax + t_start
+    model_save_time = t_start
+    last_test_T = t_start - main_args.test_interval - 1
+    last_log_T = t_start
+    start_time = time.time()
+    last_time = start_time
+    test_time_total = 0
+    test_start_time = 0
+
+    # get some common information
+    batch_size_train = main_args.batch_size
+    batch_size_run = main_args.batch_size_run
+
+    online_tasks = list(main_args.test_tasks)
+
+    # do test before training
+    n_test_runs = max(1, main_args.test_nepisode // batch_size_run)
+    test_start_time = time.time()
+    test_time_total += time.time() - test_start_time
+    update_fn = getattr(learner, "update", None)
+
+    while t_env < t_max:
+        # shuffle tasks
+        np.random.shuffle(online_tasks)
+        # train each task
+        for task in online_tasks:
+            
+            runner = task2runner[task]
+            buffer = task2offlinedata[task]
+
+            runner.t_env = t_env
+
+            episode_batch = runner.run(test_mode=False)
+            buffer.insert_episode_batch(episode_batch)
+
+            if buffer.can_sample(batch_size_train):
+                episode_sample = buffer.sample(batch_size_train)
+
+                max_ep_t = episode_sample.max_t_filled()
+                episode_sample = episode_sample[:, :max_ep_t]
+
+                if episode_sample.device != task2args[task].device:
+                    episode_sample.to(task2args[task].device)
+                
+                if callable(update_fn):
+                    terminated = learner.train(
+                        episode_sample, t_env / len(train_tasks), episode, task
+                    )
+                else:
+                    terminated = learner.train(episode_sample, t_env, episode, task)
+
+                    if terminated is not None and terminated:
+                        break
+
+            episode += batch_size_run
+
+        t_env += len(online_tasks)
+
+            #########################################################
+        #     episode_sample = task2offlinedata[task].sample(batch_size_train)
+
+        #     if episode_sample.device != task2args[task].device:
+        #         episode_sample.to(task2args[task].device)
+        
+        #     if callable(update_fn):
+        #         terminated = learner.train(
+        #             episode_sample, t_env / len(train_tasks), episode, task
+        #         )
+        #     else:
+        #         terminated = learner.train(episode_sample, t_env, episode, task)
+
+        #     if terminated is not None and terminated:
+        #         break
+
+        #     episode += batch_size_run
+
+        # t_env += len(train_tasks)
+        
+        if callable(update_fn):
+            update_fn()
+
+        if terminated is not None and terminated:
+            logger.console_logger.info(
+                f"Terminate training by the learner at t_env = {t_env}. Finish training."
+            )
+            break
+
+        # Execute test runs once in a while & final evaluation
+        if (t_env - last_test_T) / main_args.test_interval >= 1 or t_env >= t_max:
+            test_start_time = time.time()
+
+            with th.no_grad():
+                for task in main_args.test_tasks:
+                    task2runner[task].t_env = t_env
+                    for _ in range(n_test_runs):
+                        task2runner[task].run(test_mode=True)
+
+            test_time_total += time.time() - test_start_time
+
+            logger.console_logger.info("Step: {} / {}".format(t_env, t_max))
+            logger.console_logger.info(
+                "Estimated time left: {}. Time passed: {}. Test time cost: {}".format(
+                    time_left(last_time, last_test_T, t_env, t_max),
+                    time_str(time.time() - start_time),
+                    time_str(test_time_total),
+                )
+            )
+            last_time = time.time()
+            last_test_T = t_env
+
+        if main_args.save_model and (
+            t_env - model_save_time >= main_args.save_model_interval
+            or model_save_time == 0
+        ):
+            save_path = os.path.join(main_args.save_dir, f"online_{str(t_env)}")
+            os.makedirs(save_path, exist_ok=True)
+            logger.console_logger.info("Saving models to {}".format(save_path))
+            learner.save_models(save_path)
+            model_save_time = t_env
+
+        if (t_env - last_log_T) >= main_args.log_interval:
+            last_log_T = t_env
+            logger.log_stat("episode", episode, t_env)
+            logger.print_recent_stats()
+
+            wandb.log(
+                {
+                    "time step": t_env / (len(train_tasks)),
+                    **{
+                        f"{k}": v[-1][1]
+                        for k, v in logger.stats.items()
+                    },
+                }
+            )
+
 
 def run_sequential(args, logger):
     # Init runner so we can get env info
@@ -295,7 +444,7 @@ def run_sequential(args, logger):
     all_tasks = list(set(args.train_tasks + args.test_tasks))
 
     task2args, task2runner, task2buffer, task2scheme, task2groups, task2preprocess = (
-        init_tasks(all_tasks, main_args, logger)
+        init_tasks(all_tasks, main_args, logger, buffer_size=1)
     )
     task2buffer_scheme = {task: task2buffer[task].scheme for task in all_tasks}
 
@@ -314,6 +463,7 @@ def run_sequential(args, logger):
             preprocess=task2preprocess[task],
             mac=mac,
         )
+
 
     # define learner
     learner = le_REGISTRY[main_args.learner](mac, logger, main_args)
@@ -372,7 +522,7 @@ def run_sequential(args, logger):
 
     logger.console_logger.info(
         "Beginning multi-task offline training with {} timesteps for each task".format(
-            main_args.t_max
+            main_args.offline_tmax
         )
     )
     train_sequential(
@@ -385,12 +535,47 @@ def run_sequential(args, logger):
         task2offlinedata,
     )
 
+    # save the final model
+    if main_args.save_model:
+        save_path = os.path.join(main_args.results_save_dir, "Offline", "models", "seed_" + str(main_args.seed), str(main_args.offline_tmax))
+        os.makedirs(save_path, exist_ok=True)
+        logger.console_logger.info("Saving final models to {}".format(save_path))
+        learner.save_models(save_path)
+
+
+    logger.console_logger.info("Re-initializing runners and buffers for online phase")
+
+    task2args_online, task2runner_online, task2buffer_online, task2scheme_online, task2groups_online, task2preprocess_online = (
+        init_tasks(all_tasks, main_args, logger, buffer_size=main_args.buffer_size)
+    )
+
+    for task in all_tasks:
+        task2runner_online[task].setup(
+            scheme=task2scheme_online[task],
+            groups=task2groups_online[task],
+            preprocess=task2preprocess_online[task],
+            mac=mac,   # 기존 mac 그대로
+        )
+
+    logger.console_logger.info(
+        f"Beginning multi-task online training with {main_args.online_tmax} timesteps"
+    )
+
+    train_online(
+        main_args,
+        logger,
+        learner,
+        task2args_online,
+        task2runner_online,
+        task2buffer_online,   # ★ online replay
+        t_start=main_args.offline_tmax,
+    )
 
     wandb.finish()
 
     # save the final model
     if main_args.save_model:
-        save_path = os.path.join(main_args.save_dir, str(main_args.t_max))
+        save_path = os.path.join(main_args.results_save_dir, "Online", "models", "seed_" + str(main_args.seed), str(main_args.online_tmax))
         os.makedirs(save_path, exist_ok=True)
         logger.console_logger.info("Saving final models to {}".format(save_path))
         learner.save_models(save_path)
