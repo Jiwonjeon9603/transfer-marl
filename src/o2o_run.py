@@ -639,7 +639,7 @@ def run_sequential(args, logger):
         learner.save_models(save_path)
 
     for task in args.test_tasks:
-        task2runner_online[task].close_env()
+        task2runner[task].close_env()
     logger.console_logger.info(f"Finished Training")
 
 
