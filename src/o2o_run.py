@@ -63,7 +63,7 @@ def run(_run, _config, _log):
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
     # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
     wandb.init(
-        project="MTMA-O2O",
+        project="jwjeonMTMA-O2O",
         group=_config["task"],
         name=wandb_name,
         config=_config,
@@ -365,7 +365,7 @@ def train_online(
     learner,
     args,
     episode_runner,
-    onlinedata,
+    replaybuffer,
     offlinedata,
     t_start=0,
 ):
@@ -399,17 +399,16 @@ def train_online(
         np.random.shuffle(online_tasks)
         # train each task
         for task in online_tasks:
-            
             runner = episode_runner[task]
-            buffer = onlinedata[task]
+            online_buffer = replaybuffer[task]
 
             runner.t_env = t_env
             
             episode_batch = runner.run(test_mode=False)
-            buffer.insert_episode_batch(episode_batch)
+            online_buffer.insert_episode_batch(episode_batch)
 
-            if buffer.can_sample(batch_size_train):
-                episode_sample = buffer.sample(batch_size_train)
+            if online_buffer.can_sample(batch_size_train):
+                episode_sample = online_buffer.sample(batch_size_train)
 
                 max_ep_t = episode_sample.max_t_filled()
                 episode_sample = episode_sample[:, :max_ep_t]
@@ -499,7 +498,7 @@ def run_sequential(args, logger):
     all_tasks = list(set(args.train_tasks + args.test_tasks))
 
     task2args, task2runner, task2buffer, task2scheme, task2groups, task2preprocess = (
-        init_tasks(all_tasks, main_args, logger, buffer_size=1)
+        init_tasks(all_tasks, main_args, logger, buffer_size=main_args.buffer_size)
     )
     task2buffer_scheme = {task: task2buffer[task].scheme for task in all_tasks}
 
@@ -518,7 +517,6 @@ def run_sequential(args, logger):
             preprocess=task2preprocess[task],
             mac=mac,
         )
-
 
     # define learner
     learner = le_REGISTRY[main_args.learner](mac, logger, main_args)
@@ -626,7 +624,7 @@ def run_sequential(args, logger):
         task2args,
         task2runner,
         # parallel_runner,
-        # task2buffer_online,   # ★ online replay
+        task2buffer,   # ★ online replay
         task2offlinedata,
         t_start=main_args.offline_tmax,
     )
