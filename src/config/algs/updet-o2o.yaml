@@ -58,4 +58,4 @@ algo_name: "Updet-bc"
 o2o_dataset: "only_online"
 
 online_tmax: 30000
-offline_tmax: 5000
+offline_tmax: 30000
