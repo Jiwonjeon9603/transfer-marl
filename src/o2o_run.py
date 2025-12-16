@@ -365,7 +365,6 @@ def train_online(
     learner,
     args,
     episode_runner,
-    # parallel_runner,
     onlinedata,
     offlinedata,
     t_start=0,
@@ -599,44 +598,35 @@ def run_sequential(args, logger):
         learner.save_models(save_path)
 
 
-    logger.console_logger.info("Re-initializing runners and buffers for online phase")
+    # logger.console_logger.info("Re-initializing runners and buffers for online phase")
 
-    task2args_online, task2runner_online, task2buffer_online, task2scheme_online, task2groups_online, task2preprocess_online = (
-        init_tasks(all_tasks, main_args, logger, buffer_size=main_args.buffer_size)
-    )
+    # task2args_online, task2runner_online, task2buffer_online, task2scheme_online, task2groups_online, task2preprocess_online = (
+    #     init_tasks(all_tasks, main_args, logger, buffer_size=main_args.buffer_size)
+    # )
     
-    for task in all_tasks:
-        task2runner_online[task].setup(
-            scheme=task2scheme_online[task],
-            groups=task2groups_online[task],
-            preprocess=task2preprocess_online[task],
-            mac=mac,   # 기존 mac 그대로
-        )
-
-    logger.console_logger.info(
-        f"Beginning multi-task online training with {main_args.online_tmax} timesteps"
-    )
-
-    # _, parallel_runner , _, _, _, _= init_parallel_runner(all_tasks, main_args, logger, buffer_size=main_args.online_buffer_size)
-
     # for task in all_tasks:
-    #     parallel_runner[task].setup(
+    #     task2runner_online[task].setup(
     #         scheme=task2scheme_online[task],
     #         groups=task2groups_online[task],
     #         preprocess=task2preprocess_online[task],
     #         mac=mac,   # 기존 mac 그대로
     #     )
-    for task in args.test_tasks:
-        task2runner[task].close_env()
+
+    logger.console_logger.info(
+        f"Beginning multi-task online training with {main_args.online_tmax} timesteps"
+    )
+
+    # for task in args.test_tasks:
+    #     task2runner[task].close_env()
         
     train_online(
         main_args,
         logger,
         learner,
-        task2args_online,
-        task2runner_online,
+        task2args,
+        task2runner,
         # parallel_runner,
-        task2buffer_online,   # ★ online replay
+        # task2buffer_online,   # ★ online replay
         task2offlinedata,
         t_start=main_args.offline_tmax,
     )
