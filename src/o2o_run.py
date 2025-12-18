@@ -394,6 +394,7 @@ def train_online(
     update_fn = getattr(learner, "update", None)
 
     terminated = None
+
     while t_env < t_max:
         # shuffle tasks
         np.random.shuffle(online_tasks)
@@ -578,22 +579,25 @@ def run_sequential(args, logger):
             main_args.offline_tmax
         )
     )
-    train_sequential(
-        main_args.train_tasks,
-        main_args,
-        logger,
-        learner,
-        task2args,
-        task2runner,
-        task2offlinedata,
-    )
 
-    # save the final model
-    if main_args.save_model:
-        save_path = os.path.join(main_args.results_save_dir, "Offline", "models", "seed_" + str(main_args.seed), str(main_args.offline_tmax))
-        os.makedirs(save_path, exist_ok=True)
-        logger.console_logger.info("Saving final models to {}".format(save_path))
-        learner.save_models(save_path)
+
+    if not main_args.learn_only_online:
+        train_sequential(
+            main_args.train_tasks,
+            main_args,
+            logger,
+            learner,
+            task2args,
+            task2runner,
+            task2offlinedata,
+        )
+
+        # save the final model
+        if main_args.save_model:
+            save_path = os.path.join(main_args.results_save_dir, "Offline", "models", "seed_" + str(main_args.seed), str(main_args.offline_tmax))
+            os.makedirs(save_path, exist_ok=True)
+            logger.console_logger.info("Saving final models to {}".format(save_path))
+            learner.save_models(save_path)
 
 
     # logger.console_logger.info("Re-initializing runners and buffers for online phase")
@@ -616,7 +620,7 @@ def run_sequential(args, logger):
 
     # for task in args.test_tasks:
     #     task2runner[task].close_env()
-        
+
     train_online(
         main_args,
         logger,
@@ -626,7 +630,7 @@ def run_sequential(args, logger):
         # parallel_runner,
         task2buffer,   # ★ online replay
         task2offlinedata,
-        t_start=main_args.offline_tmax,
+        t_start=0,
     )
 
     wandb.finish()
