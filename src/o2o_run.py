@@ -55,6 +55,7 @@ def run(_run, _config, _log):
     # sacred is on by default
     logger.setup_sacred(_run)
 
+
     wandb_name = f"agent={args.name}-bs={args.batch_size}"
     group_name = _config["task"]
     if "one" in args.task:
