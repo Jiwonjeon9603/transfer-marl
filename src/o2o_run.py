@@ -55,8 +55,9 @@ def run(_run, _config, _log):
     # sacred is on by default
     logger.setup_sacred(_run)
 
-
     wandb_name = f"agent={args.name}-bs={args.batch_size}"
+    if "one" in args.task:
+        wandb_name += f"_om={args.online_train_tasks}"
     _config["job"] = _config["name"]
     # _config = {k: str(v) for k, v in _config.items()}
 
@@ -143,7 +144,8 @@ def init_tasks(task_list, main_args, logger, buffer_size):
         preprocess = {
             "actions": ("actions_onehot", [OneHot(out_dim=task_args.n_actions)])
         }
-        if task in main_args.onlien_train_tasks:
+
+        if task in main_args.online_train_tasks:
             task2buffer[task] = ReplayBuffer(
                 scheme,
                 groups,
@@ -385,7 +387,7 @@ def train_online(
     batch_size_train = main_args.batch_size
     batch_size_run = main_args.batch_size_run
 
-    online_tasks = list(main_args.onlien_train_tasks)
+    online_tasks = list(main_args.online_train_tasks)
 
     # do test before training
     n_test_runs = max(1, main_args.test_nepisode // batch_size_run)
