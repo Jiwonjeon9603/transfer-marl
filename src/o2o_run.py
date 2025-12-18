@@ -56,7 +56,7 @@ def run(_run, _config, _log):
     logger.setup_sacred(_run)
 
 
-    wandb_name = f"agent={args.name}-o2o-ds={args.o2o_dataset}"
+    wandb_name = f"agent={args.name}-bs={args.batch_size}"
     _config["job"] = _config["name"]
     # _config = {k: str(v) for k, v in _config.items()}
 
