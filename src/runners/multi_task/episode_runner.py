@@ -65,6 +65,9 @@ class EpisodeRunner:
 
             # Pass the entire batch of experiences up till now to the agents
             # Receive the actions for each agent at this timestep in a batch of size 1
+            # if online:
+            #     actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env-self.args.offline_tmax, task=self.task, test_mode=test_mode)
+            # else:
             actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, task=self.task, test_mode=test_mode)
 
             reward, terminated, env_info = self.env.step(actions[0])
@@ -88,6 +91,9 @@ class EpisodeRunner:
         self.batch.update(last_data, ts=self.t)
 
         # Select actions in the last stored state
+        # if online:
+        #     actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env-self.args.offline_tmax, task=self.task, test_mode=test_mode)
+        # else:
         actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, task=self.task, test_mode=test_mode)
 
         self.batch.update({"actions": actions}, ts=self.t)      

@@ -56,8 +56,11 @@ def run(_run, _config, _log):
     logger.setup_sacred(_run)
 
     wandb_name = f"agent={args.name}-bs={args.batch_size}"
+    group_name = _config["task"]
     if "one" in args.task:
         wandb_name += f"_om={args.online_train_tasks}"
+    if args.learn_only_online:
+        group_name = "Only_Online_" + _config["task"]
     _config["job"] = _config["name"]
     # _config = {k: str(v) for k, v in _config.items()}
 
@@ -65,7 +68,7 @@ def run(_run, _config, _log):
     # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
     wandb.init(
         project="MTMA-O2O",
-        group=_config["task"],
+        group = group_name,
         name=wandb_name,
         config=_config,
         id=str(uuid.uuid4()),
@@ -374,10 +377,14 @@ def train_online(
     ########## start training ##########
     t_env = t_start
     episode = 0  # episode does not matter
-    t_max = main_args.online_tmax
-    model_save_time = 0
-    last_test_T = 0
-    last_log_T = 0
+    t_max = main_args.online_tmax +  main_args.offline_tmax # main_args.online_tmax
+    model_save_time = main_args.offline_tmax # 0
+    last_test_T = main_args.offline_tmax # 0
+    last_log_T = main_args.offline_tmax #0
+    # t_max = main_args.online_tmax
+    # model_save_time = 0
+    # last_test_T =  0
+    # last_log_T = 0
     start_time = time.time()
     last_time = start_time
     test_time_total = 0
@@ -483,7 +490,7 @@ def train_online(
 
             wandb.log(
                 {
-                    "time step": t_env + main_args.offline_tmax,
+                    "time step": t_env,
                     **{
                         f"{k}": v[-1][1]
                         for k, v in logger.stats.items()
@@ -632,7 +639,7 @@ def run_sequential(args, logger):
         # parallel_runner,
         task2buffer,   # ★ online replay
         task2offlinedata,
-        t_start=0,
+        t_start= main_args.offline_tmax,
     )
 
     wandb.finish()
