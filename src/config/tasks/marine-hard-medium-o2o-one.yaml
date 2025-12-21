@@ -17,4 +17,4 @@ test_tasks_data_quality: {
 }
 
 
-online_train_tasks: ["4m"]
+online_train_tasks: ["7m_vs_8m"]

@@ -394,8 +394,10 @@ def train_online(
     # get some common information
     batch_size_train = main_args.batch_size
     batch_size_run = main_args.batch_size_run
-
-    online_tasks = list(main_args.online_train_tasks)
+    if "one" in main_args.task:
+        online_tasks = [main_args.online_train_tasks]
+    else:
+        online_tasks = list(main_args.online_train_tasks)
 
     # do test before training
     n_test_runs = max(1, main_args.test_nepisode // batch_size_run)
