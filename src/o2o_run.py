@@ -56,7 +56,7 @@ def run(_run, _config, _log):
     logger.setup_sacred(_run)
 
 
-    wandb_name = f"agent={args.name}"
+    wandb_name = f"agent={args.name}-eps=30K"
     group_name = _config["task"]
     if "one" in args.task:
         wandb_name += f"_om={args.online_train_tasks}"
