@@ -114,7 +114,7 @@ class UPDeTLearnerBC:
         return mac_out, end_indices, first_zero_idx
 
     def train_policy(
-        self, batch: EpisodeBatch, t_env: int, episode_num: int, task: str
+        self, batch: EpisodeBatch, t_env: int, episode_num: int, task: str, online: bool
     ):
         # Get the relevant quantities
         rewards = batch["reward"][:, :]
@@ -125,7 +125,8 @@ class UPDeTLearnerBC:
         avail_actions = batch["avail_actions"]
 
         mac_out = []
-
+        if online:
+            self.main_args.bc=False
         self.mac.init_hidden(batch.batch_size, task)
         for t in range(batch.max_seq_length):
             agent_outs = self.mac.forward(
@@ -133,7 +134,7 @@ class UPDeTLearnerBC:
             )
             mac_out.append(agent_outs)
         mac_out = th.stack(mac_out, dim=1)  # Concat over time
-
+        
         with th.no_grad():
             mac_out_for_target = []
             self.mac.init_hidden(batch.batch_size, task)
@@ -141,7 +142,6 @@ class UPDeTLearnerBC:
                 target_inputs = self.mac.forward(batch, t=t, task=task, token_dropout=0)
                 mac_out_for_target.append(target_inputs)
             mac_out_for_target = th.stack(mac_out_for_target, dim=1)
-
         if self.main_args.bc:
             b, t, n, a = mac_out.size()
             bc_loss = (
@@ -225,17 +225,16 @@ class UPDeTLearnerBC:
 
         # 0-out the targets that came from padded data
         masked_td_error = td_error * mask[:, : -self.c]
-        masked_cons_error = cons_error * mask
+
 
         # Normal L2 loss, take mean over actual data
         td_loss = (masked_td_error**2).sum() / mask[:, : -self.c].sum()
-        cons_loss = masked_cons_error.sum() / mask.sum()
+
 
         if self.main_args.bc:
             loss = td_loss + bc_loss
-
         else:
-            loss = td_loss + self.alpha * cons_loss
+            loss = td_loss
 
         # Do RL Learning
         self.optimiser.zero_grad()
@@ -263,7 +262,8 @@ class UPDeTLearnerBC:
         ):
             self.logger.log_stat(f"{task}/loss", loss.item(), t_env)
             self.logger.log_stat(f"{task}/td_loss", td_loss.item(), t_env)
-            self.logger.log_stat(f"{task}/bc_loss", bc_loss.item(), t_env)
+            if self.main_args.bc:
+                self.logger.log_stat(f"{task}/bc_loss", bc_loss.item(), t_env)
             self.logger.log_stat(f"{task}/grad_norm", grad_norm, t_env)
             mask_elems = mask.sum().item()
             self.logger.log_stat(
@@ -289,8 +289,8 @@ class UPDeTLearnerBC:
         # self.train_vae(batch, t_env, episode_num, task)
         self.current_steps += 1
 
-    def train(self, batch: EpisodeBatch, t_env: int, episode_num: int, task: str):
-        self.train_policy(batch, t_env, episode_num, task)
+    def train(self, batch: EpisodeBatch, t_env: int, episode_num: int, task: str, online: bool):
+        self.train_policy(batch, t_env, episode_num, task, online)
         self.current_steps += 1
 
     def _update_targets(self):

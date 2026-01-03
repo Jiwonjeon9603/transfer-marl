@@ -56,12 +56,12 @@ def run(_run, _config, _log):
     logger.setup_sacred(_run)
 
 
-    wandb_name = f"agent={args.name}-eps=30K"
-    group_name = _config["task"]
+    wandb_name = f"WO_Online_BC_agent={args.name}"
+    group_name = "_WO_Online_BC_" + _config["task"]
     if "one" in args.task:
         wandb_name += f"_om={args.online_train_tasks}"
     if args.learn_only_online:
-        group_name = "Only_Online_" + _config["task"]
+        group_name += "_Only_Online"
     _config["job"] = _config["name"]
     # _config = {k: str(v) for k, v in _config.items()}
 
@@ -294,10 +294,10 @@ def train_sequential(
         
             if callable(update_fn):
                 terminated = learner.train(
-                    episode_sample, t_env / len(train_tasks), episode, task
+                    episode_sample, t_env / len(train_tasks), episode, task, False
                 )
             else:
-                terminated = learner.train(episode_sample, t_env, episode, task)
+                terminated = learner.train(episode_sample, t_env, episode, task, False)
 
             if terminated is not None and terminated:
                 break
@@ -431,10 +431,10 @@ def train_online(
 
                 if callable(update_fn):
                     terminated = learner.train(
-                        episode_sample, t_env / len(online_tasks), episode, task
+                        episode_sample, t_env / len(online_tasks), episode, task, True
                     )
                 else:
-                    terminated = learner.train(episode_sample, t_env, episode, task)
+                    terminated = learner.train(episode_sample, t_env, episode, task, True)
 
                 if terminated is not None and terminated:
                     break
