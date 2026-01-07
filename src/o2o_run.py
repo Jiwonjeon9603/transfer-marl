@@ -56,6 +56,14 @@ def run(_run, _config, _log):
     logger.setup_sacred(_run)
 
 
+    # wandb_name = f"WO_Online_BC_agent={args.name}"
+    # group_name = "_WO_Online_BC_" + _config["task"]
+    # if "one" in args.task:
+    #     wandb_name += f"_om={args.online_train_tasks}"
+    # if args.learn_only_online:
+    #     group_name += "_Only_Online"
+    # _config["job"] = _config["name"]
+
     wandb_name = f"WO_Online_BC_agent={args.name}"
     group_name = "_WO_Online_BC_" + _config["task"]
     if "one" in args.task:

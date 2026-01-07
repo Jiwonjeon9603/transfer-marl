@@ -60,4 +60,4 @@ o2o_dataset: "only_online"
 online_tmax: 30000
 offline_tmax: 30000
 
-learn_only_online: False
+learn_only_online: True
