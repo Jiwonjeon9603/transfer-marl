@@ -15,11 +15,17 @@ from controllers.multi_task import REGISTRY as mac_REGISTRY
 from components.episode_buffer import ReplayBuffer
 from components.offline_buffer import OfflineBuffer
 from components.transforms import OneHot
+from itertools import combinations
+import torch.nn.functional as F
 
 import numpy as np
-
+import random
 import wandb
 import uuid
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import re
 
 
 def run(_run, _config, _log):
@@ -64,8 +70,8 @@ def run(_run, _config, _log):
     #     group_name += "_Only_Online"
     # _config["job"] = _config["name"]
 
-    wandb_name = f"WO_Online_BC_agent={args.name}"
-    group_name = "_WO_Online_BC_" + _config["task"]
+    group_name = "Simple_Curriculum"
+    wandb_name = group_name + f"_period={str(int(args.curriculum_period))}"
     if "one" in args.task:
         wandb_name += f"_om={args.online_train_tasks}"
     if args.learn_only_online:
@@ -390,6 +396,7 @@ def train_online(
     model_save_time = main_args.offline_tmax # 0
     last_test_T = main_args.offline_tmax # 0
     last_log_T = main_args.offline_tmax #0
+    last_curriculum_T = main_args.offline_tmax
     # t_max = main_args.online_tmax
     # model_save_time = 0
     # last_test_T =  0
@@ -404,6 +411,8 @@ def train_online(
     batch_size_run = main_args.batch_size_run
     if "one" in main_args.task:
         online_tasks = [main_args.online_train_tasks]
+    elif "curriculum" in main_args.task:
+        online_tasks = []
     else:
         online_tasks = list(main_args.online_train_tasks)
 
@@ -418,7 +427,33 @@ def train_online(
     while t_env < t_max:
         # shuffle tasks
         np.random.shuffle(online_tasks)
-        # train each task
+        if "curriculum" in main_args.task:
+            if t_env == t_start or t_env - last_curriculum_T >= main_args.curriculum_period:
+                if t_env == t_start:
+                    with th.no_grad():
+                        task_heatmap={}
+                        for task in main_args.test_tasks:
+                            episode_runner[task].t_env = t_env
+                            test_heatmaps = []
+                            for _ in range(n_test_runs):  #n_test_runs
+                                episode_runner[task].run(test_mode=True, heatmap=True)
+                                test_heatmaps.append(episode_runner[task].avg_heatmap)
+                            task_heatmap[task] = th.mean(th.stack(test_heatmaps, dim=0),dim=0)
+                
+                won_mean_list = []
+                for k, v in logger.stats.items():
+                    if "test_battle_won_mean" in k:
+                        task_name = k.split("/")[0]
+                        win_rate = v[-1][1]
+                        won_mean_list.append((task_name, win_rate))
+                random.shuffle(won_mean_list)
+                sorted_by_performance=sorted(won_mean_list, key=lambda x: x[1])
+                
+                draw_heatmap(task_heatmap, sorted_by_performance, t_env)
+
+                online_tasks = [t[0] for t in sorted_by_performance[:3]]
+                last_curriculum_T = t_env
+            
         for task in online_tasks:
             runner = episode_runner[task]
             online_buffer = replaybuffer[task]
@@ -446,7 +481,7 @@ def train_online(
 
                 if terminated is not None and terminated:
                     break
-
+            
             episode += batch_size_run
 
         t_env += len(online_tasks)
@@ -460,16 +495,31 @@ def train_online(
                 f"Terminate training by the learner at t_env = {t_env}. Finish training."
             )
             break
-
+                                
         # Execute test runs once in a while & final evaluation
         if (t_env - last_test_T) / main_args.test_interval >= 1 or t_env >= t_max:
             test_start_time = time.time()
 
+            task_heatmap={}
             with th.no_grad():
                 for task in main_args.test_tasks:
                     episode_runner[task].t_env = t_env
+                    test_heatmaps = []
                     for _ in range(n_test_runs):
                         episode_runner[task].run(test_mode=True)
+                        test_heatmaps.append(episode_runner[task].avg_heatmap)
+                    task_heatmap[task] = th.mean(th.stack(test_heatmaps, dim=0),dim=0)
+
+            won_mean_list = []
+            for k, v in logger.stats.items():
+                if "test_battle_won_mean" in k:
+                    task_name = k.split("/")[0]
+                    win_rate = v[-1][1]
+                    won_mean_list.append((task_name, win_rate))
+            random.shuffle(won_mean_list)
+            sorted_by_performance=sorted(won_mean_list, key=lambda x: x[1])
+            
+            draw_heatmap(task_heatmap, sorted_by_performance, t_env)
 
             test_time_total += time.time() - test_start_time
 
@@ -499,6 +549,18 @@ def train_online(
             logger.log_stat("episode", episode, t_env)
             logger.print_recent_stats()
 
+            grad_sim_dict = {}
+            current_grad_tasks = list(learner.task_grad.keys())
+            for task_a, task_b in combinations(current_grad_tasks, 2):
+                g1 = learner.task_grad[task_a]
+                g2 = learner.task_grad[task_b]
+                
+                # 코사인 유사도 계산 (벡터가 길기 때문에 F.cosine_similarity 사용)
+                sim = F.cosine_similarity(g1.unsqueeze(0), g2.unsqueeze(0)).item()
+                
+                # 키 이름 예시: "grad_sim/3m_vs_5m_vs_6m"
+                grad_sim_dict[f"grad_sim/{task_a}_vs_{task_b}"] = sim
+            
             wandb.log(
                 {
                     "time step": t_env,
@@ -506,9 +568,67 @@ def train_online(
                         f"{k}": v[-1][1]
                         for k, v in logger.stats.items()
                     },
+                    **{
+                        f"selected_task/{task}": (1 if task in online_tasks else 0)
+                        for task in main_args.test_tasks
+                    },
+                    **grad_sim_dict
                 }
             )
 
+
+def draw_heatmap(task_heatmap, sorted_by_performance, t_env):
+    save_dir = f"heatmap/tenv_{str(int(t_env))}"
+    os.makedirs(save_dir, exist_ok=True)
+    for k, v in sorted_by_performance:
+        data = task_heatmap[k].cpu().numpy()
+
+        if "_vs_" in k:
+            parts = re.findall(r'\d+', k)
+            n_allies = int(parts[0])
+            n_enemies = int(parts[1])
+        else:
+            n_allies = int(re.search(r'\d+', k).group())
+            n_enemies = n_allies
+        # 내 유닛을 제외한 아군 수 (Ally tokens)
+        n_ally_tokens = n_allies - 1
+        
+        # 선을 그을 좌표 계산 (인덱스 기준)
+        own_end = 1
+        enemy_end = own_end + n_enemies
+        ally_end = enemy_end + n_ally_tokens
+
+        plt.figure(figsize=(8, 6))
+        
+        is_annot = k in ["3m", "4m", "5m", "5m_vs_6m"]
+        ax = sns.heatmap(data, annot=is_annot, fmt=".2f", cmap='viridis', vmin=0, vmax=0.4)
+
+        # 3. 구분선 추가 (빨간색 진한 실선)
+        # axvline: 세로선 (Key 구분), axhline: 가로선 (Query 구분)
+        line_style = {"color": "red", "linewidth": 2.5, "alpha": 0.8}
+        
+        # Own | Enemy 경계
+        ax.axvline(own_end, **line_style)
+        ax.axhline(own_end, **line_style)
+        
+        # Enemy | Ally 경계
+        ax.axvline(enemy_end, **line_style)
+        ax.axhline(enemy_end, **line_style)
+        
+        # Ally | Hidden 경계
+        ax.axvline(ally_end, **line_style)
+        ax.axhline(ally_end, **line_style)
+
+        # 제목 및 저장
+        plt.title(f"Task: {k} | Win Rate: {v:.2f}")
+        plt.xlabel("Key Tokens (Own-Enemy-Ally-Hidden)")
+        plt.ylabel("Query Tokens (Own-Enemy-Ally-Hidden)")
+        
+        save_dir = f"heatmap/tenv_{int(t_env)}"
+        os.makedirs(save_dir, exist_ok=True)
+        filename = f"{save_dir}/{k}_{v:.2f}.png"
+        plt.savefig(filename)
+        plt.close()
 
 def run_sequential(args, logger):
     # Init runner so we can get env info

@@ -52,7 +52,25 @@ class UPDeTMAC:
                                                             test_mode=test_mode)
         return chosen_actions
 
-    def forward(self, ep_batch, t, task, token_dropout=0, test_mode=False):
+    def cal_attention(self, ep_batch, t_ep, t_env, task, token_dropout=0, test_mode=False, heatmap=True):
+        agent_inputs = self._build_inputs(ep_batch, t_ep, task)
+        avail_actions = ep_batch["avail_actions"][:, t_ep]
+
+        data_actions = ep_batch["actions"][:, t_ep]
+        bs = agent_inputs.shape[0] // self.task2n_agents[task]
+
+        heatmap = self.agent(
+            agent_inputs,
+            self.hidden_states,
+            task,
+            data_actions,
+            token_dropout,
+            test_mode,
+            heatmap
+        )
+        return heatmap
+
+    def forward(self, ep_batch, t, task, token_dropout=0, test_mode=False, heatmap=False):
         agent_inputs = self._build_inputs(ep_batch, t, task)
         avail_actions = ep_batch["avail_actions"][:, t]
 
@@ -66,21 +84,8 @@ class UPDeTMAC:
             data_actions,
             token_dropout,
             test_mode,
+            heatmap
         )
-
-        if getattr(self.main_args, "attention_heatmap", False):
-            if len(agent_outs) == 3:
-                b = ep_batch.batch_size
-                na = self.task2n_agents[task]
-                nb = agent_outs[0].shape[-1]
-                return agent_outs[0].view(b, na, nb, nb,), agent_outs[1].view(b, na, nb, nb,), agent_outs[2].view(b, na, nb, nb,)
-            else:
-                return agent_outs.view(
-                    ep_batch.batch_size,
-                    self.task2n_agents[task],
-                    agent_outs.shape[-1],
-                    agent_outs.shape[-1],
-                )
 
         # Softmax the agent outputs if they're policy logits
         if self.agent_output_type == "pi_logits":  ### Only in COMA

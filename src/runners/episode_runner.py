@@ -67,7 +67,7 @@ class EpisodeRunner:
             # Pass the entire batch of experiences up till now to the agents
             # Receive the actions for each agent at this timestep in a batch of size 1
             actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, test_mode=test_mode)
-
+            
             reward, terminated, env_info = self.env.step(actions[0])
             episode_return += reward
 

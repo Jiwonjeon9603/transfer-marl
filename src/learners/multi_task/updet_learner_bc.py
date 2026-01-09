@@ -86,7 +86,7 @@ class UPDeTLearnerBC:
         self.alpha = main_args.coef_conservative
 
         self.cons_type = main_args.type_conservative
-
+        self.task_grad={}
         self.current_steps = 0
 
     def attention(self, batch: EpisodeBatch, t_env: int, episode_num: int, task: str):
@@ -239,6 +239,13 @@ class UPDeTLearnerBC:
         # Do RL Learning
         self.optimiser.zero_grad()
         loss.backward()
+        grad_list = []
+        for param in self.params:
+            if param.grad is not None:
+                grad_list.append(param.grad.view(-1))
+        grad_list = th.cat(grad_list)
+        self.task_grad[task] = grad_list
+
         grad_norm = th.nn.utils.clip_grad_norm_(
             self.params, self.main_args.grad_norm_clip
         )

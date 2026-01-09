@@ -54,7 +54,7 @@ class UPDeTAgent(nn.Module):
         # make hidden states on the same device as model
         return self.q_skill.weight.new(1, self.args.entity_embed_dim).zero_()
 
-    def forward(self, inputs, hidden_state, task, data_actions=None, token_dropout = 0, test_mode = False):
+    def forward(self, inputs, hidden_state, task, data_actions=None, token_dropout = 0, test_mode = False, heatmap=False):
         hidden_state = hidden_state.view(-1, 1, self.entity_embed_dim)
         # get decomposer, last_action_shape and n_agents of this specific task
         task_decomposer = self.task2decomposer[task]
@@ -71,7 +71,7 @@ class UPDeTAgent(nn.Module):
         own_obs, enemy_feats, ally_feats = task_decomposer.decompose_obs(obs_inputs)  # own_obs: [bs*self.n_agents, own_obs_dim]
         bs = int(own_obs.shape[0] / task_n_agents)
 
-######################################### Agent id input, compact action states ????? #########################################
+######################################### Agent id input, compact action states #########################################
 
         # embed agent_id inputs and decompose last_action_inputs
         agent_id_inputs = [
@@ -102,16 +102,12 @@ class UPDeTAgent(nn.Module):
         
         total_hidden = th.cat([own_hidden, enemy_hidden, ally_hidden, history_hidden], dim=1)
         
-        if getattr(self.args, "attention_heatmap", False):
-            
+        if heatmap:
             hb, ht, hd = total_hidden.size()
             token_mask = th.ones(hb, ht, ht, device=own_obs.device)
             token_mask = None
-            heatmap = self.transformer.attention_heatmap(total_hidden, token_mask)
-            outputs = self.transformer(total_hidden, token_mask)
-            h = outputs[:, -1:, :]
-            return heatmap, h
-        
+            att_heatmap = self.transformer.attention_heatmaps(total_hidden, token_mask)
+            return att_heatmap
 
         if token_dropout != 0:
             if not test_mode:
@@ -145,9 +141,6 @@ class UPDeTAgent(nn.Module):
 
         if task_decomposer.n_actions_no_attack == task_decomposer.n_actions:
             q = q_base
-
-
-        
         return q, h
 
 

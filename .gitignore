@@ -197,3 +197,5 @@ run*.sh
 Attention*
 images/
 offline_models/
+heatmap/
+smac*

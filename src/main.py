@@ -149,7 +149,7 @@ if __name__ == "__main__":
 
     # Load algorithm base configs
     alg_config = _get_config(params, "--config", "algs")
-    # config_dict = {**config_dict, **alg_config}
+    # config_dict = {**config_dict, **alg_confi
     config_dict = recursive_dict_update(config_dict, alg_config)
 
     # get env type and load env config
@@ -180,7 +180,7 @@ if __name__ == "__main__":
 
     # with open(
     #     os.path.join(
-    #         os.path.dirname(__file__), "config/tasks", "marine-hard-medium-o2o-hard.yaml"
+    #         os.path.dirname(__file__), "config/tasks", "marine-hard-medium-o2o-curriculum.yaml"
     #     ),
     #     "r",
     # ) as f:

@@ -21,7 +21,7 @@ class SelfAttention(nn.Module):
 
         self.unifyheads = nn.Linear(heads * emb, emb)
 
-    def forward(self, x, mask):
+    def forward(self, x, mask, return_attention=False):
 
         b, t, e = x.size()
         h = self.heads
@@ -30,7 +30,6 @@ class SelfAttention(nn.Module):
         values = self.tovalues(x).view(b, t, h, e)
 
         # compute scaled dot-product self-attention
-
         # - fold heads into the batch dimension
         keys = keys.transpose(1, 2).contiguous().view(b * h, t, e)
         queries = queries.transpose(1, 2).contiguous().view(b * h, t, e)
@@ -56,14 +55,17 @@ class SelfAttention(nn.Module):
 
         dot = F.softmax(dot, dim=2)
         # - dot now has row-wise self-attention probabilities
-        # self.attn_map = dot.detach().cpu()
         # apply the self attention to the values
         out = torch.bmm(dot, values).view(b, h, t, e)
 
         # swap h, t back, unify heads
         out = out.transpose(1, 2).contiguous().view(b, t, h * e)
 
-        return self.unifyheads(out)
+        out = self.unifyheads(out)
+        if return_attention:
+            attn = dot.view(b, h, t, t)
+            return out, attn
+        return out
 
 
 class TransformerBlock(nn.Module):
@@ -83,10 +85,13 @@ class TransformerBlock(nn.Module):
         )
         self.do = nn.Dropout(dropout)
     
-    def forward(self, x_mask):
+    def forward(self, x_mask, return_attention=False):
         x, mask = x_mask
 
-        attended = self.attention(x, mask)
+        if return_attention:
+            attended, attn = self.attention(x, mask, return_attention=True)
+        else:
+            attended = self.attention(x, mask)
 
         x = self.norm1(attended + x)
 
@@ -98,6 +103,8 @@ class TransformerBlock(nn.Module):
 
         x = self.do(x)
 
+        if return_attention:
+            return x, mask, attn
         return x, mask
 
 
@@ -127,6 +134,23 @@ class Transformer(nn.Module):
         x = self.toprobs(x.view(b * t, e)).view(b, t, self.num_tokens)
 
         return x  # , tokens
+
+    def attention_heatmaps(
+        self, tokens, mask, average_heads=True, detach=True, to_cpu=False
+    ):
+        x = tokens
+        attn_maps = []
+        for block in self.tblocks:
+            x, mask, attn = block((x, mask), return_attention=True)
+            if average_heads:
+                attn = attn.mean(dim=1)
+            if detach:
+                attn = attn.detach()
+            if to_cpu:
+                attn = attn.cpu()
+            attn_maps.append(attn)
+
+        return attn_maps
 
 
 class StairsBlock(nn.Module):

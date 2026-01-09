@@ -2,7 +2,7 @@ from envs import REGISTRY as env_REGISTRY
 from functools import partial
 from components.episode_buffer import EpisodeBatch
 import numpy as np
-
+import torch
 
 class EpisodeRunner:
 
@@ -23,6 +23,12 @@ class EpisodeRunner:
         self.test_returns = []
         self.train_stats = {}
         self.test_stats = {}
+
+        
+        # self.list_heatmap = []
+        # self.heatmap = 0
+        self.avg_heatmap = 0
+        # self.avail_agent_mask = 0
 
         # Log the first run
         self.log_train_stats_t = -1000000
@@ -46,13 +52,14 @@ class EpisodeRunner:
         self.env.reset()
         self.t = 0
 
-    def run(self, test_mode=False, nolog=False, pretrain=False):
+    def run(self, test_mode=False, nolog=False, pretrain=False, heatmap=False):
         self.reset()
 
         terminated = False
         episode_return = 0
         self.mac.init_hidden(batch_size=self.batch_size, task=self.task)
-
+        time_agent_mask = []
+        list_heatmap = []
         while not terminated:
 
             pre_transition_data = {
@@ -60,7 +67,9 @@ class EpisodeRunner:
                 "avail_actions": [self.env.get_avail_actions()],
                 "obs": [self.env.get_obs()]
             }
-
+            cur_mask = [agent_av[0] for agent_av in pre_transition_data["avail_actions"][0]]
+            time_agent_mask.append(cur_mask)
+            
             self.batch.update(pre_transition_data, ts=self.t)
 
             # Pass the entire batch of experiences up till now to the agents
@@ -69,7 +78,11 @@ class EpisodeRunner:
             #     actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env-self.args.offline_tmax, task=self.task, test_mode=test_mode)
             # else:
             actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, task=self.task, test_mode=test_mode)
-
+            if heatmap:
+                heatmap = self.mac.cal_attention(self.batch, t_ep=self.t, t_env=self.t_env, task=self.task, test_mode=test_mode)
+                # self.list_heatmap1.append(heatmap[0])
+                list_heatmap.append(heatmap[-1])
+            
             reward, terminated, env_info = self.env.step(actions[0])
             episode_return += reward
 
@@ -82,7 +95,15 @@ class EpisodeRunner:
             self.batch.update(post_transition_data, ts=self.t)
 
             self.t += 1
-
+        if heatmap:
+            # self.list_heatmap1 = torch.stack(self.list_heatmap1, dim=0)
+            avail_agent_mask = 1 - torch.tensor(time_agent_mask)
+            expanded_av_mask = avail_agent_mask.unsqueeze(dim=-1).unsqueeze(dim=-1)
+            stacked_heatmap = torch.stack(list_heatmap, dim=0)
+            masked_heatmap = stacked_heatmap * expanded_av_mask.cuda()
+            sum_heatmap = masked_heatmap.sum(dim=(0, 1))
+            self.avg_heatmap = sum_heatmap / expanded_av_mask.sum().float()
+            
         last_data = {
             "state": [self.env.get_state()],
             "avail_actions": [self.env.get_avail_actions()],
