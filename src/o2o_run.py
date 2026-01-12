@@ -71,7 +71,7 @@ def run(_run, _config, _log):
     # _config["job"] = _config["name"]
 
     group_name = _config["task"]
-    wandb_name = group_name + f"_lora={args.use_lora}_pcgrad={args.pcgrad}"
+    wandb_name = group_name + f"_lora={args.use_lora}_pcgrad={args.use_pcgrad}"
     if "one" in args.task:
         wandb_name += f"_om={args.online_train_tasks}"
     if args.learn_only_online:
