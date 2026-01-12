@@ -70,8 +70,8 @@ def run(_run, _config, _log):
     #     group_name += "_Only_Online"
     # _config["job"] = _config["name"]
 
-    group_name = "Simple_Curriculum"
-    wandb_name = group_name + f"_period={str(int(args.curriculum_period))}"
+    group_name = _config["task"]
+    wandb_name = group_name + f"_lora={args.use_lora}_pcgrad={args.pcgrad}"
     if "one" in args.task:
         wandb_name += f"_om={args.online_train_tasks}"
     if args.learn_only_online:
@@ -308,10 +308,10 @@ def train_sequential(
         
             if callable(update_fn):
                 terminated = learner.train(
-                    episode_sample, t_env / len(train_tasks), episode, task, False
+                    episode_sample, t_env / len(train_tasks), episode, task, online=False
                 )
             else:
-                terminated = learner.train(episode_sample, t_env, episode, task, False)
+                terminated = learner.train(episode_sample, t_env, episode, task, online=False)
 
             if terminated is not None and terminated:
                 break
@@ -388,6 +388,7 @@ def train_online(
     replaybuffer,
     offlinedata,
     t_start=0,
+    use_pcgrad=False,  # False가 기존
 ):
     ########## start training ##########
     t_env = t_start
@@ -421,6 +422,9 @@ def train_online(
     test_start_time = time.time()
     test_time_total += time.time() - test_start_time
     update_fn = getattr(learner, "update", None)
+    
+    # Import inside function to avoid circular imports or issues if not passed
+    from utils.pcgrad import apply_pc_grad
 
     terminated = None
 
@@ -454,6 +458,8 @@ def train_online(
                 online_tasks = [t[0] for t in sorted_by_performance[:3]]
                 last_curriculum_T = t_env
             
+        collected_tasks_info = []
+        
         for task in online_tasks:
             runner = episode_runner[task]
             online_buffer = replaybuffer[task]
@@ -471,18 +477,75 @@ def train_online(
 
                 if episode_sample.device != args[task].device:
                     episode_sample.to(args[task].device)
+                
+                # Determine if we should update immediately
+                should_update = not use_pcgrad
 
                 if callable(update_fn):
-                    terminated = learner.train(
-                        episode_sample, t_env / len(online_tasks), episode, task, True
-                    )
+                    # ODIS-like learners might use update logic separate from train
+                    # But if we use PCGrad, we assume standard learner.train does backward
+                    # We pass update flag to learner.train
+                    # Note: Not all learners might support 'update' kwarg, we added it to UPDeTLearnerBC
+                    try:
+                        terminated = learner.train(
+                            episode_sample, t_env / len(online_tasks), episode, task, online=True, update=should_update
+                        )
+                    except TypeError:
+                         # Fallback for learners without update arg
+                         terminated = learner.train(
+                            episode_sample, t_env / len(online_tasks), episode, task, online=True
+                        )
                 else:
-                    terminated = learner.train(episode_sample, t_env, episode, task, True)
+                    try:
+                        terminated = learner.train(episode_sample, t_env, episode, task, online=True, update=should_update)
+                    except TypeError:
+                        terminated = learner.train(episode_sample, t_env, episode, task, online=True)
+
+                # Collect gradients if PCGrad is enabled
+                if use_pcgrad:
+                    # Collect gradients from learner.params
+                    task_grads = []
+                    has_grad = False
+                    for p in learner.params:
+                        if p.grad is not None:
+                            task_grads.append(p.grad.clone())
+                            has_grad = True
+                        else:
+                            # We must keep structure consistent
+                            task_grads.append(None)
+                    
+                    if has_grad:
+                        collected_tasks_info.append((task, task_grads))
+                    
+                    # Zero grad for next task
+                    learner.optimiser.zero_grad()
 
                 if terminated is not None and terminated:
                     break
             
             episode += batch_size_run
+
+        # Apply PCGrad update if any grads collected
+        # Apply PCGrad update if any grads collected
+        if use_pcgrad and collected_tasks_info:
+            task_names = [x[0] for x in collected_tasks_info]
+            task_grads_list = [x[1] for x in collected_tasks_info]
+            
+            # apply_pc_grad returns the summed projected gradients ready for update
+            # It also handles logging internally if logger is provided
+            final_grads = apply_pc_grad(task_grads_list, task_names=task_names, logger=logger, t_env=t_env)
+            
+            # Apply to params
+            idx = 0
+            for p in learner.params:
+                # We should match structure. learner.params is flat list usually.
+                if idx < len(final_grads) and final_grads[idx] is not None:
+                     if p.requires_grad:
+                         p.grad = final_grads[idx]
+                idx += 1
+            
+            learner.optimiser.step()
+            learner.optimiser.zero_grad()
 
         t_env += len(online_tasks)
 
@@ -622,7 +685,7 @@ def draw_heatmap(task_heatmap, sorted_by_performance, t_env):
         # 제목 및 저장
         plt.title(f"Task: {k} | Win Rate: {v:.2f}")
         plt.xlabel("Key Tokens (Own-Enemy-Ally-Hidden)")
-        plt.ylabel("Query Tokens (Own-Enemy-Ally-Hidden)")
+        plt.ylabel("Query Tokens (Hidden-Ally-Enemy-Ally-Own)")
         
         save_dir = f"heatmap/tenv_{int(t_env)}"
         os.makedirs(save_dir, exist_ok=True)
@@ -758,6 +821,40 @@ def run_sequential(args, logger):
         f"Beginning multi-task online training with {main_args.online_tmax} timesteps"
     )
 
+    if main_args.use_lora:
+        # Apply LoRA
+        from utils.lora import inject_lora, freeze_model
+        from utils.pcgrad import apply_pc_grad
+        logger.console_logger.info("Injecting LoRA ...")
+        
+        # You can customize r and alpha if they are in args, otherwise default
+        lora_r = getattr(main_args, "lora_r", 16)
+        lora_alpha = getattr(main_args, "lora_alpha", 32)
+        
+        # Freeze the entire agent first (common part)
+        freeze_model(learner.mac.agent)
+        freeze_model(learner.target_mac.agent)
+        
+        inject_lora(learner.mac.agent, r=lora_r, alpha=lora_alpha)
+        inject_lora(learner.target_mac.agent, r=lora_r, alpha=lora_alpha)
+        
+        # Move to CUDA if needed
+        if main_args.use_cuda:
+            learner.mac.cuda()
+            learner.target_mac.cuda()
+            
+        
+        # Re-initialize optimizer with new parameters (filtering for requires_grad=True)
+        learner.params = list(filter(lambda p: p.requires_grad, learner.mac.parameters()))
+        
+        if main_args.optim_type.lower() == "rmsprop":
+            learner.optimiser = th.optim.RMSprop(params=learner.params, lr=main_args.lr, alpha=main_args.optim_alpha, eps=main_args.optim_eps, weight_decay=main_args.weight_decay)
+        elif main_args.optim_type.lower() == "adam":
+            learner.optimiser = th.optim.Adam(params=learner.params, lr=main_args.lr, weight_decay=main_args.weight_decay)
+        
+        logger.console_logger.info(f"LoRA injected with r={lora_r}, alpha={lora_alpha}. Optimizer re-initialized.")
+        
+
     # for task in args.test_tasks:
     #     task2runner[task].close_env()
 
@@ -771,6 +868,7 @@ def run_sequential(args, logger):
         task2buffer,   # ★ online replay
         task2offlinedata,
         t_start= main_args.offline_tmax,
+        use_pcgrad=main_args.use_pcgrad,
     )
 
     wandb.finish()

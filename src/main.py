@@ -41,6 +41,7 @@ def my_main(_run, _config, _log):
 
     ########## For debugging ###########
     # config["run_file"] = "o2o_run"
+    # config["run_file"] = "baseline_run"
     ####################################
 
     # run the framework

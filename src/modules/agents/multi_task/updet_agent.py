@@ -134,7 +134,10 @@ class UPDeTAgent(nn.Module):
 
         h = outputs[:, -1:, :]
 
-        q_all = self.q_skill(outputs)
+        history_outputs = outputs[:, :-1, :] + h
+        final_outputs = th.cat([history_outputs, h], dim=1)
+
+        q_all = self.q_skill(final_outputs)
         q_base = q_all[:, 0, :]
         q_attack = th.mean(q_all[:, 1:enemy_feats.size(0)+1, :], -1)
         q = th.cat([q_base, q_attack], dim=-1)

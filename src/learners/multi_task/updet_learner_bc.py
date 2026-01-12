@@ -114,7 +114,7 @@ class UPDeTLearnerBC:
         return mac_out, end_indices, first_zero_idx
 
     def train_policy(
-        self, batch: EpisodeBatch, t_env: int, episode_num: int, task: str, online: bool
+        self, batch: EpisodeBatch, t_env: int, episode_num: int, task: str, online: bool=True, update: bool = True
     ):
         # Get the relevant quantities
         rewards = batch["reward"][:, :]
@@ -249,7 +249,8 @@ class UPDeTLearnerBC:
         grad_norm = th.nn.utils.clip_grad_norm_(
             self.params, self.main_args.grad_norm_clip
         )
-        self.optimiser.step()
+        if update:
+            self.optimiser.step()
         # get scalar for tensorboard logging
         try:
             grad_norm = grad_norm.item()
@@ -296,8 +297,8 @@ class UPDeTLearnerBC:
         # self.train_vae(batch, t_env, episode_num, task)
         self.current_steps += 1
 
-    def train(self, batch: EpisodeBatch, t_env: int, episode_num: int, task: str, online: bool):
-        self.train_policy(batch, t_env, episode_num, task, online)
+    def train(self, batch: EpisodeBatch, t_env: int, episode_num: int, task: str, online: bool=True, update: bool = True):
+        self.train_policy(batch, t_env, episode_num, task, online, update)
         self.current_steps += 1
 
     def _update_targets(self):

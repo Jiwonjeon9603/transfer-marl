@@ -17,10 +17,14 @@ from components.offline_buffer import OfflineBuffer
 from components.transforms import OneHot
 
 import numpy as np
-
+import random
 import wandb
 import uuid
+import matplotlib.pyplot as plt
+import seaborn as sns
+import re
 
+from o2o_run import draw_heatmap
 
 def run(_run, _config, _log):
     # check args sanity
@@ -56,14 +60,14 @@ def run(_run, _config, _log):
     logger.setup_sacred(_run)
 
 
-    wandb_name = f"agent={args.name}"
+    wandb_name = f"agent={args.name}_History"
     _config["job"] = _config["name"]
     # _config = {k: str(v) for k, v in _config.items()}
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
     # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
     wandb.init(
         project="MTMA-O2O",
-        group=_config["task"],
+        group="History_"+_config["task"],
         name=wandb_name,
         config=_config,
         id=str(uuid.uuid4()),
@@ -215,10 +219,10 @@ def train_sequential(
         
             if callable(update_fn):
                 terminated = learner.train(
-                    episode_sample, t_env / len(train_tasks), episode, task
+                    episode_sample, t_env / len(train_tasks), episode, task, False
                 )
             else:
-                terminated = learner.train(episode_sample, t_env, episode, task)
+                terminated = learner.train(episode_sample, t_env, episode, task, False)
 
             if terminated is not None and terminated:
                 break
@@ -240,11 +244,31 @@ def train_sequential(
         if (t_env - last_test_T) / main_args.test_interval >= 1 or t_env >= t_max:
             test_start_time = time.time()
 
+            task_heatmap={}
             with th.no_grad():
                 for task in main_args.test_tasks:
                     task2runner[task].t_env = t_env
+                    test_heatmaps = []
                     for _ in range(n_test_runs):
-                        task2runner[task].run(test_mode=True)
+                        task2runner[task].run(test_mode=True, heatmap=True)
+                        test_heatmaps.append(task2runner[task].avg_heatmap)
+                    task_heatmap[task] = th.mean(th.stack(test_heatmaps, dim=0),dim=0)
+
+            won_mean_list = []
+            for k, v in logger.stats.items():
+                if "test_battle_won_mean" in k:
+                    task_name = k.split("/")[0]
+                    win_rate = v[-1][1]
+                    won_mean_list.append((task_name, win_rate))
+            random.shuffle(won_mean_list)
+            sorted_by_performance=sorted(won_mean_list, key=lambda x: x[1])
+            
+            draw_heatmap(task_heatmap, sorted_by_performance, t_env)
+            # with th.no_grad():
+            #     for task in main_args.test_tasks:
+            #         task2runner[task].t_env = t_env
+            #         for _ in range(n_test_runs):
+            #             task2runner[task].run(test_mode=True)
 
             test_time_total += time.time() - test_start_time
 

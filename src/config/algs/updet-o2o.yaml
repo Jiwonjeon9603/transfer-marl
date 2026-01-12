@@ -61,5 +61,8 @@ online_tmax: 30000
 offline_tmax: 30000
 curriculum_period: 1000
 
+use_pcgrad: True
+use_lora: True
+
 learn_only_online: True
-checkpoint_path: "/home/wisrl/jwjeon/transfer-marl/offline_models/seed_0"
+checkpoint_path: "/home/jwjeon/jwjeon/Stairs_others/proposal-mtma/offline_models/seed_0"
