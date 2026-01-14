@@ -428,35 +428,105 @@ def train_online(
 
     terminated = None
 
+    # Curriculum state for Easy-to-Hard
+    curr_state = {'initialized': False, 'task_sets': [], 'current_set_idx': 0, 'set_start_t': t_start}
+
     while t_env < t_max:
         # shuffle tasks
         np.random.shuffle(online_tasks)
         if "curriculum" in main_args.task:
-            if t_env == t_start or t_env - last_curriculum_T >= main_args.curriculum_period:
-                if t_env == t_start:
+            if "Easy-to-Hard" in main_args.task:
+                # --- Easy-to-Hard Logic ---
+                num_sets = 4
+                time_budget_per_set = int((t_max - t_start) / num_sets)
+                curriculum_threshold = 0.85  # Win rate threshold to advance early
+
+                # Initialize sets at the start or if not yet initialized
+                if not curr_state['initialized']:
                     with th.no_grad():
-                        task_heatmap={}
                         for task in main_args.test_tasks:
                             episode_runner[task].t_env = t_env
-                            test_heatmaps = []
-                            for _ in range(n_test_runs):  #n_test_runs
+                            for _ in range(n_test_runs):
                                 episode_runner[task].run(test_mode=True, heatmap=True)
-                                test_heatmaps.append(episode_runner[task].avg_heatmap)
-                            task_heatmap[task] = th.mean(th.stack(test_heatmaps, dim=0),dim=0)
-                
-                won_mean_list = []
-                for k, v in logger.stats.items():
-                    if "test_battle_won_mean" in k:
-                        task_name = k.split("/")[0]
-                        win_rate = v[-1][1]
-                        won_mean_list.append((task_name, win_rate))
-                random.shuffle(won_mean_list)
-                sorted_by_performance=sorted(won_mean_list, key=lambda x: x[1])
-                
-                draw_heatmap(task_heatmap, sorted_by_performance, t_env)
 
-                online_tasks = [t[0] for t in sorted_by_performance[:3]]
-                last_curriculum_T = t_env
+                    won_mean_list = []
+                    for k, v in logger.stats.items():
+                        if "test_battle_won_mean" in k:
+                            task_name = k.split("/")[0]
+                            win_rate = v[-1][1]
+                            won_mean_list.append((task_name, win_rate))
+                    
+                    # Sort Descending (Best -> Worst) for Easy-to-Hard
+                    sorted_by_performance = sorted(won_mean_list, key=lambda x: x[1], reverse=True)
+
+
+                    # Create sets (assuming 12 tasks total, 3 per set)
+                    all_sorted_tasks = [t[0] for t in sorted_by_performance]
+                    curr_state['task_sets'] = [all_sorted_tasks[i:i+3] for i in range(0, len(all_sorted_tasks), 3)]
+                    
+                    # Log sets
+                    logger.console_logger.info(f"Curriculum Sets Created: {curr_state['task_sets']}")
+                    
+                    # Initialize state
+                    curr_state['current_set_idx'] = 0
+                    curr_state['set_start_t'] = t_env
+                    online_tasks = curr_state['task_sets'][0]
+                    curr_state['initialized'] = True
+                    logger.console_logger.info(f"Starting Easy-to-Hard Curriculum with set {curr_state['current_set_idx']}: {online_tasks}")
+                
+                # Curriculum advancement logic
+                if curr_state['initialized'] and curr_state['current_set_idx'] < num_sets - 1:
+                    advance_curriculum = False
+                    
+                    # Time-based advancement
+                    if t_env - curr_state['set_start_t'] >= time_budget_per_set:
+                        logger.console_logger.info(f"Advancing curriculum due to time budget. Current set {curr_state['current_set_idx']} finished.")
+                        advance_curriculum = True
+                    
+                    # Performance-based advancement (check win rate of current tasks)
+                    current_set_win_rates = []
+                    for task in online_tasks:
+                        for k, v in logger.stats.items():
+                            if f"{task}/test_battle_won_mean" == k:
+                                current_set_win_rates.append(v[-1][1])
+                                break
+                    
+                    if current_set_win_rates and all(wr >= curriculum_threshold for wr in current_set_win_rates):
+                        logger.console_logger.info(f"Advancing curriculum due to high performance ({np.mean(current_set_win_rates):.2f} >= {curriculum_threshold}). Current set {curr_state['current_set_idx']} finished.")
+                        advance_curriculum = True
+
+                    if advance_curriculum:
+                        curr_state['current_set_idx'] += 1
+                        curr_state['set_start_t'] = t_env
+                        online_tasks = curr_state['task_sets'][curr_state['current_set_idx']]
+                        logger.console_logger.info(f"Advanced to Easy-to-Hard Curriculum set {curr_state['current_set_idx']}: {online_tasks}")
+            else:
+                # --- Original Curriculum Logic ---
+                if t_env == t_start or t_env - last_curriculum_T >= main_args.curriculum_period:
+                    if t_env == t_start:
+                        with th.no_grad():
+                            task_heatmap={}
+                            for task in main_args.test_tasks:
+                                episode_runner[task].t_env = t_env
+                                test_heatmaps = []
+                                for _ in range(n_test_runs):  #n_test_runs
+                                    episode_runner[task].run(test_mode=True, heatmap=True)
+                                    test_heatmaps.append(episode_runner[task].avg_heatmap)
+                                task_heatmap[task] = th.mean(th.stack(test_heatmaps, dim=0),dim=0)
+                    
+                    won_mean_list = []
+                    for k, v in logger.stats.items():
+                        if "test_battle_won_mean" in k:
+                            task_name = k.split("/")[0]
+                            win_rate = v[-1][1]
+                            won_mean_list.append((task_name, win_rate))
+                    random.shuffle(won_mean_list)
+                    sorted_by_performance=sorted(won_mean_list, key=lambda x: x[1])
+                    
+                    draw_heatmap(task_heatmap, sorted_by_performance, t_env)
+
+                    online_tasks = [t[0] for t in sorted_by_performance[:3]]
+                    last_curriculum_T = t_env
             
         collected_tasks_info = []
         
@@ -526,7 +596,6 @@ def train_online(
             episode += batch_size_run
 
         # Apply PCGrad update if any grads collected
-        # Apply PCGrad update if any grads collected
         if use_pcgrad and collected_tasks_info:
             task_names = [x[0] for x in collected_tasks_info]
             task_grads_list = [x[1] for x in collected_tasks_info]
@@ -563,26 +632,26 @@ def train_online(
         if (t_env - last_test_T) / main_args.test_interval >= 1 or t_env >= t_max:
             test_start_time = time.time()
 
-            task_heatmap={}
+            # task_heatmap={}
             with th.no_grad():
                 for task in main_args.test_tasks:
                     episode_runner[task].t_env = t_env
-                    test_heatmaps = []
+                    # test_heatmaps = []
                     for _ in range(n_test_runs):
                         episode_runner[task].run(test_mode=True)
-                        test_heatmaps.append(episode_runner[task].avg_heatmap)
-                    task_heatmap[task] = th.mean(th.stack(test_heatmaps, dim=0),dim=0)
+            #             test_heatmaps.append(episode_runner[task].avg_heatmap)
+            #         task_heatmap[task] = th.mean(th.stack(test_heatmaps, dim=0),dim=0)
 
-            won_mean_list = []
-            for k, v in logger.stats.items():
-                if "test_battle_won_mean" in k:
-                    task_name = k.split("/")[0]
-                    win_rate = v[-1][1]
-                    won_mean_list.append((task_name, win_rate))
-            random.shuffle(won_mean_list)
-            sorted_by_performance=sorted(won_mean_list, key=lambda x: x[1])
+            # won_mean_list = []
+            # for k, v in logger.stats.items():
+            #     if "test_battle_won_mean" in k:
+            #         task_name = k.split("/")[0]
+            #         win_rate = v[-1][1]
+            #         won_mean_list.append((task_name, win_rate))
+            # random.shuffle(won_mean_list)
+            # sorted_by_performance=sorted(won_mean_list, key=lambda x: x[1])
             
-            draw_heatmap(task_heatmap, sorted_by_performance, t_env)
+            # draw_heatmap(task_heatmap, sorted_by_performance, t_env)
 
             test_time_total += time.time() - test_start_time
 
