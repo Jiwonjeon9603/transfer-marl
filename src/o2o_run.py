@@ -70,8 +70,8 @@ def run(_run, _config, _log):
     #     group_name += "_Only_Online"
     # _config["job"] = _config["name"]
 
-    group_name = _config["task"]
-    wandb_name = group_name + f"_lora={args.use_lora}_pcgrad={args.use_pcgrad}"
+    group_name = "marine-hard-medium-o2o-curriculum-Easy-to-Hard"
+    wandb_name = _config["task"]
     if "one" in args.task:
         wandb_name += f"_om={args.online_train_tasks}"
     if args.learn_only_online:
