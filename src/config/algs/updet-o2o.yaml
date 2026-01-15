@@ -65,4 +65,6 @@ use_pcgrad: False
 use_lora: False
 
 learn_only_online: True
-checkpoint_path: "/home/jwjeon/jwjeon/Stairs_others/proposal-mtma/offline_models/seed_0"
+predefined_online_tasks: True
+
+# checkpoint_path: "/home/jwjeon/jwjeon/Stairs_others/proposal-mtma/offline_models/seed_0"

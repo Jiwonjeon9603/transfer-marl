@@ -443,25 +443,30 @@ def train_online(
 
                 # Initialize sets at the start or if not yet initialized
                 if not curr_state['initialized']:
-                    with th.no_grad():
-                        for task in main_args.test_tasks:
-                            episode_runner[task].t_env = t_env
-                            for _ in range(n_test_runs):
-                                episode_runner[task].run(test_mode=True, heatmap=True)
-
-                    won_mean_list = []
-                    for k, v in logger.stats.items():
-                        if "test_battle_won_mean" in k:
-                            task_name = k.split("/")[0]
-                            win_rate = v[-1][1]
-                            won_mean_list.append((task_name, win_rate))
+                    if main_args.predefined_online_tasks:
+                        all_sorted_tasks = main_args.predefined_online_train_tasks
                     
-                    # Sort Descending (Best -> Worst) for Easy-to-Hard
-                    sorted_by_performance = sorted(won_mean_list, key=lambda x: x[1], reverse=True)
+                    else:
+                        with th.no_grad():
+                            for task in main_args.test_tasks:
+                                episode_runner[task].t_env = t_env
+                                for _ in range(n_test_runs):
+                                    episode_runner[task].run(test_mode=True, heatmap=True)
+
+                        won_mean_list = []
+                        for k, v in logger.stats.items():
+                            if "test_battle_won_mean" in k:
+                                task_name = k.split("/")[0]
+                                win_rate = v[-1][1]
+                                won_mean_list.append((task_name, win_rate))
+                        
+                        # Sort Descending (Best -> Worst) for Easy-to-Hard
+                        sorted_by_performance = sorted(won_mean_list, key=lambda x: x[1], reverse=True)
 
 
-                    # Create sets (assuming 12 tasks total, 3 per set)
-                    all_sorted_tasks = [t[0] for t in sorted_by_performance]
+                        # Create sets (assuming 12 tasks total, 3 per set)
+                        all_sorted_tasks = [t[0] for t in sorted_by_performance]
+
                     curr_state['task_sets'] = [all_sorted_tasks[i:i+3] for i in range(0, len(all_sorted_tasks), 3)]
                     
                     # Log sets
