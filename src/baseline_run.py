@@ -60,14 +60,17 @@ def run(_run, _config, _log):
     logger.setup_sacred(_run)
 
 
-    wandb_name = f"agent={args.name}_History"
+    group_name = _config["task"]
+    wandb_name = "seed_"+str(args.seed)
+
+    # wandb_name = f"agent={args.name}_History"
     _config["job"] = _config["name"]
     # _config = {k: str(v) for k, v in _config.items()}
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
     # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
     wandb.init(
-        project="MTMA-O2O",
-        group="History_"+_config["task"],
+        project="MTMA-BaseOffline",
+        group=group_name,
         name=wandb_name,
         config=_config,
         id=str(uuid.uuid4()),

@@ -23,7 +23,7 @@ mixing_embed_dim: 32
 hypernet_layers: 2
 hypernet_embed: 64
 
-name: "updet-bc-History"
+name: "updet-History"
 
 # agent type
 agent: "mt_updet"
@@ -54,4 +54,4 @@ token_dropout: 0.1
 
 bc: True
 
-algo_name: "Updet-bc-History"
+algo_name: "Updet-History"
