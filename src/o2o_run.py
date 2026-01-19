@@ -61,23 +61,24 @@ def run(_run, _config, _log):
     # sacred is on by default
     logger.setup_sacred(_run)
 
+    # group_name = _config["task"]
+    # wandb_name = group_name
 
-    # wandb_name = f"WO_Online_BC_agent={args.name}"
-    # group_name = "_WO_Online_BC_" + _config["task"]
-    # if "one" in args.task:
-    #     wandb_name += f"_om={args.online_train_tasks}"
-    # if args.learn_only_online:
-    #     group_name += "_Only_Online"
-    # _config["job"] = _config["name"]
+    if "curriculum" in args.task:
+        group_name = "Curriculum"
+    elif "one" in args.task:
+        group_name = "One_task"
+    else:
+        group_name = "Base"
 
-    group_name = "marine-hard-medium-o2o-curriculum-Easy-to-Hard"
     wandb_name = _config["task"]
+
     if "one" in args.task:
-        wandb_name += f"_om={args.online_train_tasks}"
-    if args.learn_only_online:
-        group_name += "_Only_Online"
+        wandb_name = wandb_name + f"_om={args.online_train_tasks}"
+    if "curriculum" in args.task:
+        wandb_name = group_name + f"_period={args.curriculum_period}"
+
     _config["job"] = _config["name"]
-    # _config = {k: str(v) for k, v in _config.items()}
 
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
     # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
