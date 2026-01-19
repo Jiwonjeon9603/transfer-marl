@@ -529,7 +529,7 @@ def train_online(
                     random.shuffle(won_mean_list)
                     sorted_by_performance=sorted(won_mean_list, key=lambda x: x[1])
                     
-                    draw_heatmap(task_heatmap, sorted_by_performance, t_env)
+                    # draw_heatmap(task_heatmap, sorted_by_performance, t_env)
 
                     online_tasks = [t[0] for t in sorted_by_performance[:3]]
                     last_curriculum_T = t_env
