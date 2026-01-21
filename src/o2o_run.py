@@ -77,7 +77,7 @@ def run(_run, _config, _log):
         wandb_name = wandb_name + f"_om={args.online_train_tasks}"
     if "curriculum" in args.task:
         wandb_name = group_name + f"_period={args.curriculum_period}"
-
+    wandb_name += f"_time-step={args.online_tmax}"
     _config["job"] = _config["name"]
 
     wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
