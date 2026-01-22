@@ -75,7 +75,7 @@ def run(_run, _config, _log):
 
     if "one" in args.task:
         wandb_name = wandb_name + f"_om={args.online_train_tasks}"
-    if "curriculum" in args.task:
+    if args.task == "marine-hard-medium-o2o-curriculum":
         wandb_name = group_name + f"_period={args.curriculum_period}"
     wandb_name += f"_time-step={args.online_tmax}"
     _config["job"] = _config["name"]
