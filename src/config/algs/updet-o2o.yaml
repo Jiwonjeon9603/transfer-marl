@@ -57,7 +57,7 @@ algo_name: "Updet-bc"
 
 o2o_dataset: "only_online"
 
-online_tmax: 30000
+online_tmax: 10000
 offline_tmax: 30000
 curriculum_period: 1000
 
@@ -65,6 +65,6 @@ use_pcgrad: False
 use_lora: False
 
 learn_only_online: True
-predefined_online_tasks: True
+predefined_online_tasks: False
 
 # checkpoint_path: "/home/jwjeon/jwjeon/Stairs_others/proposal-mtma/offline_models/seed_0"
