@@ -436,7 +436,7 @@ def train_online(
         # shuffle tasks
         np.random.shuffle(online_tasks)
         if "curriculum" in main_args.task:
-            if "Easy-to-Hard" in main_args.task:
+            if "Easy-to-Hard" or "Hard-to-Easy" in main_args.task:
                 # --- Easy-to-Hard Logic ---
                 num_sets = 4
                 time_budget_per_set = int((t_max - t_start) / num_sets)
@@ -461,10 +461,14 @@ def train_online(
                                 win_rate = v[-1][1]
                                 won_mean_list.append((task_name, win_rate))
                         
-                        # Sort Descending (Best -> Worst) for Easy-to-Hard
-                        sorted_by_performance = sorted(won_mean_list, key=lambda x: x[1], reverse=True)
-
-
+                        
+                        if "Hard-to-Easy" in main_args.task:
+                            # Sort Descending (Worst -> Best) for Hard-to-Easy
+                            sorted_by_performance = sorted(won_mean_list, key=lambda x: x[1], reverse=False)
+                        else:
+                            # Sort Descending (Best -> Worst) for Easy-to-Hard
+                            sorted_by_performance = sorted(won_mean_list, key=lambda x: x[1], reverse=True)
+                            
                         # Create sets (assuming 12 tasks total, 3 per set)
                         all_sorted_tasks = [t[0] for t in sorted_by_performance]
 
