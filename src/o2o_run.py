@@ -66,24 +66,22 @@ def run(_run, _config, _log):
 
     if "curriculum" in args.task:
         group_name = "Curriculum"
-    elif "one" in args.task:
-        group_name = "One_task"
     else:
         group_name = "Base"
 
     wandb_name = _config["task"]
 
-    if "one" in args.task:
-        wandb_name = wandb_name + f"_om={args.online_train_tasks}"
+    if "curriculum" not in args.task:
+        # predefined online task 들을 run 이름에 포함해 선택별로 구분
+        wandb_name = wandb_name + f"_tasks={args.online_train_tasks}"
     if args.task == "marine-hard-medium-o2o-curriculum":
         wandb_name = group_name + f"_period={args.curriculum_period}"
     wandb_name += f"_time-step={args.online_tmax}"
     _config["job"] = _config["name"]
 
-    wandb.login(relogin=True, key="ad42a1cee565925e2b5065efe7e76c329b954a29")  # jwjeon
-    # wandb.login(relogin=True, key="c65dcbd2cd1f30816b9a69b67cf462741ea48880") # mscho
+    wandb.login(relogin=True, key="")
     wandb.init(
-        project="MTMA-O2O-newCKPT",
+        project="MTMA-O2O",
         group = group_name,
         name=wandb_name,
         config=_config,
@@ -411,11 +409,10 @@ def train_online(
     # get some common information
     batch_size_train = main_args.batch_size
     batch_size_run = main_args.batch_size_run
-    if "one" in main_args.task:
-        online_tasks = [main_args.online_train_tasks]
-    elif "curriculum" in main_args.task:
+    if "curriculum" in main_args.task:
         online_tasks = []
     else:
+        # predefined online tasks: online_train_tasks 가 항상 list 라고 가정
         online_tasks = list(main_args.online_train_tasks)
 
     # do test before training
@@ -436,7 +433,7 @@ def train_online(
         # shuffle tasks
         np.random.shuffle(online_tasks)
         if "curriculum" in main_args.task:
-            if "Easy-to-Hard" or "Hard-to-Easy" in main_args.task:
+            if "Easy-to-Hard" in main_args.task or "Hard-to-Easy" in main_args.task or "ETH" in main_args.task:
                 # --- Easy-to-Hard Logic ---
                 num_sets = 4
                 time_budget_per_set = int((t_max - t_start) / num_sets)
